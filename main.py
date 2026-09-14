@@ -6,7 +6,7 @@ BUDGET = 5000
 
 def calculate_total_cost(gift_price, delivery_cost):
     """Возвращает общую стоимость подарка с доставкой."""
-    return gift_price + delivery_cost
+    return float(gift_price) + float(delivery_cost)
 
 
 def get_budget_status(total_cost, budget):
