@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from main import calculate_total_cost, get_budget_status, get_gift_status
 
@@ -13,5 +13,9 @@ def test_get_budget_status():
 
 
 def test_get_gift_status():
-    assert get_gift_status(False, date(2026, 9, 20)) == "Подарок еще не заказан"
-    assert get_gift_status(True, date(2026, 9, 20)) == "Подарок заказан и ожидается"
+    assert get_gift_status(
+        False, date(2026, 9, 20)
+    ) == "Подарок еще не заказан"
+    assert get_gift_status(
+        True, date.today() + timedelta(days=1)
+    ) == "Подарок заказан и ожидается"
