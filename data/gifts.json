@@ -2,7 +2,7 @@
     {
         "id": 1,
         "name": "Беспроводные наушники",
-        "recipient": "Анна",
+        "recipient_id": 1,
         "price": 4200.0,
         "delivery_cost": 350.0,
         "delivery_date": "2026-09-30",
@@ -11,7 +11,7 @@
     {
         "id": 2,
         "name": "Настольная игра",
-        "recipient": "Иван",
+        "recipient_id": 2,
         "price": 1800.0,
         "delivery_cost": 250.0,
         "delivery_date": "2026-10-05",

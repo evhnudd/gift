@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from main import calculate_total_cost, get_budget_status, get_gift_status
+from gifts import calculate_total_cost, get_budget_status, get_gift_status
 
 
 def test_calculate_total_cost():

@@ -8,15 +8,24 @@ from gifts import (
     check_gift_budget,
     find_gifts,
     get_budget_status,
-    get_gift_status,
+    get_gift,
     order_gift,
 )
-from storage import load_gifts, parse_delivery_date, save_gifts
+from storage import (
+    load_gifts,
+    load_settings,
+    load_users,
+    save_gifts,
+    save_users,
+)
+from users import Users, add_user, get_user
 from utils import input_date, input_float, input_int
 
 
 BUDGET = 5000
 DATA_FILE = Path(__file__).parent / "data" / "gifts.json"
+USERS_FILE = Path(__file__).parent / "data" / "users.json"
+SETTINGS_FILE = Path(__file__).parent / "data" / "settings.json"
 
 
 def show_gifts(gifts: Gifts) -> None:
@@ -24,33 +33,33 @@ def show_gifts(gifts: Gifts) -> None:
     if not gifts:
         print("Список подарков пуст.")
         return
-    for gift_id, gift in gifts.items():
-        total_cost = calculate_total_cost(gift["price"], gift["delivery_cost"])
-        status = get_gift_status(
-            gift["is_purchased"], parse_delivery_date(gift)
-        )
-        print(
-            f"{gift_id}. {gift['name']} для {gift['recipient']} | "
-            f"{total_cost:.2f} руб. | {status}"
-        )
+    for gift in gifts:
+        print(gift)
 
 
 def show_orders(gifts: Gifts) -> None:
     """Выводит только заказанные подарки."""
-    ordered_gifts = {
-        gift_id: gift
-        for gift_id, gift in gifts.items()
-        if gift["is_purchased"]
-    }
+    ordered_gifts = [gift for gift in gifts if gift.is_purchased]
     if not ordered_gifts:
         print("Заказанных подарков нет.")
         return
     show_gifts(ordered_gifts)
 
 
+def show_users(users: Users) -> None:
+    """Выводит список пользователей."""
+    if not users:
+        print("Список пользователей пуст.")
+        return
+    for user in users:
+        print(user)
+
+
 def main() -> None:
     """Запускает меню управления подарками."""
-    gifts = load_gifts(DATA_FILE)
+    users = load_users(USERS_FILE)
+    gifts = load_gifts(DATA_FILE, users)
+    budget = float(load_settings(SETTINGS_FILE).get("budget", BUDGET))
     while True:
         print(
             "\n=== Система учета подарков ===\n"
@@ -61,26 +70,30 @@ def main() -> None:
             "5. Отменить заказ\n"
             "6. Показать заказы\n"
             "7. Добавить подарок\n"
+            "8. Показать пользователей\n"
+            "9. Добавить пользователя\n"
             "0. Выход"
         )
         choice = input_int("Выберите действие: ")
         if choice == 0:
             save_gifts(DATA_FILE, gifts)
+            save_users(USERS_FILE, users)
             print("Данные сохранены.")
             break
         if choice == 1:
             show_gifts(gifts)
         elif choice == 2:
             for gift in find_gifts(gifts, input("Название или получатель: ")):
-                print(gift["name"], "-", gift["recipient"])
+                print(gift.name, "-", gift.recipient.name)
         elif choice == 3:
             gift_id = input_int("Идентификатор подарка: ")
             try:
                 total_cost = calculate_total_cost(
-                    gifts[gift_id]["price"], gifts[gift_id]["delivery_cost"]
+                    get_gift(gifts, gift_id).price,
+                    get_gift(gifts, gift_id).delivery_cost,
                 )
-                print(get_budget_status(total_cost, BUDGET))
-                print("Проверка:", check_gift_budget(gifts, gift_id, BUDGET))
+                print(get_budget_status(total_cost, budget))
+                print("Проверка:", check_gift_budget(gifts, gift_id, budget))
             except KeyError:
                 print("Подарок не найден.")
         elif choice == 4:
@@ -104,15 +117,29 @@ def main() -> None:
         elif choice == 6:
             show_orders(gifts)
         elif choice == 7:
-            gift_id = add_gift(
-                gifts,
-                input("Название подарка: "),
-                input("Получатель: "),
-                input_float("Стоимость: "),
-                input_float("Доставка: "),
-                input_date("Дата доставки (ДД.ММ.ГГГГ): "),
+            try:
+                recipient_id = input_int("Идентификатор получателя: ")
+                recipient = get_user(users, recipient_id)
+                gift = add_gift(
+                    gifts,
+                    input("Название подарка: "),
+                    recipient,
+                    input_float("Стоимость: "),
+                    input_float("Доставка: "),
+                    input_date("Дата доставки (ДД.ММ.ГГГГ): "),
+                )
+                print(f"Подарок добавлен под номером {gift.id}.")
+            except KeyError:
+                print("Пользователь не найден.")
+        elif choice == 8:
+            show_users(users)
+        elif choice == 9:
+            user = add_user(
+                users,
+                input("Имя пользователя: "),
+                input("Электронная почта: "),
             )
-            print(f"Подарок добавлен под номером {gift_id}.")
+            print(f"Пользователь добавлен под номером {user.id}.")
         else:
             print("Неизвестное действие.")
 
