@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}События{% endblock %}
+{% block content %}
+<h1>События</h1>
+{% for event in events %}
+<div class="card mb-3"><div class="card-body">
+    <h2 class="h5">{{ event.title }}</h2>
+    <p>{{ event.event_date|date:"d.m.Y" }} · пользователь №{{ event.user_id }} · подарок №{{ event.gift_id }}</p>
+    <a href="{% url 'gift_web:event_detail' event.id %}">Подробнее</a>
+</div></div>
+{% empty %}<p>События не найдены.</p>{% endfor %}
+{% endblock %}

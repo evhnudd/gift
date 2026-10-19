@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Получатели{% endblock %}
+{% block content %}
+<h1>Получатели</h1>
+<p>Получатель связан с пользователем по идентификатору.</p>
+<div class="row g-3">
+{% for recipient in recipients %}
+    <div class="col-md-6"><div class="card"><div class="card-body">
+        <h2 class="h5">{{ recipient.name }}</h2>
+        <a href="{% url 'gift_web:recipient_detail' recipient.id %}">Подарки получателя</a>
+    </div></div></div>
+{% empty %}<p>Получатели не найдены.</p>{% endfor %}
+</div>
+{% endblock %}

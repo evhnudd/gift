@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Подарки{% endblock %}
+{% block content %}
+<h1>Подарки</h1>
+<p>Всего подарков: {{ gifts|length }}</p>
+{% for gift in gifts %}
+    {% include "gift_web/includes/gift_card.html" %}
+{% empty %}<p>Подарки не найдены.</p>{% endfor %}
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ user.name }} — Пользователь{% endblock %}
+{% block content %}
+<h1>{{ user.name }}</h1>
+<p><strong>Электронная почта:</strong> {{ user.email }}</p>
+<a href="{% url 'gift_web:recipient_detail' user.id %}" class="btn btn-outline-primary">Открыть как получателя</a>
+{% endblock %}

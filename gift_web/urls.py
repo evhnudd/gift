@@ -1,0 +1,22 @@
+from django.urls import path
+
+from . import views
+
+
+app_name = "gift_web"
+
+urlpatterns = [
+    path("", views.index, name="index"),
+    path("users/", views.user_list, name="user_list"),
+    path("users/<int:user_id>/", views.user_detail, name="user_detail"),
+    path("recipients/", views.recipient_list, name="recipient_list"),
+    path(
+        "recipients/<int:recipient_id>/",
+        views.recipient_detail,
+        name="recipient_detail",
+    ),
+    path("gifts/", views.gift_list, name="gift_list"),
+    path("gifts/<int:gift_id>/", views.gift_detail, name="gift_detail"),
+    path("events/", views.event_list, name="event_list"),
+    path("events/<int:event_id>/", views.event_detail, name="event_detail"),
+]

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ gift.name }} — Подарок{% endblock %}
+{% block content %}
+<h1>{{ gift.name }}</h1>
+<dl class="row">
+    <dt class="col-sm-3">Получатель</dt><dd class="col-sm-9"><a href="{% url 'gift_web:recipient_detail' gift.recipient.id %}">{{ gift.recipient.name }}</a></dd>
+    <dt class="col-sm-3">Стоимость</dt><dd class="col-sm-9">{{ gift.price|floatformat:2 }} руб.</dd>
+    <dt class="col-sm-3">Доставка</dt><dd class="col-sm-9">{{ gift.delivery_cost|floatformat:2 }} руб.</dd>
+    <dt class="col-sm-3">Дата доставки</dt><dd class="col-sm-9">{{ gift.delivery_date|date:"d.m.Y" }}</dd>
+    <dt class="col-sm-3">Статус</dt><dd class="col-sm-9">{{ gift.status }}</dd>
+</dl>
+<a href="{% url 'gift_web:gift_list' %}" class="btn btn-outline-primary">К списку подарков</a>
+{% endblock %}
