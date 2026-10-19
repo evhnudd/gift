@@ -200,3 +200,40 @@ flake8 main.py gifts.py storage.py utils.py test_main.py tests
 pytest -q
 flake8 main.py gifts.py storage.py utils.py test_main.py tests
 ```
+# Веб-часть Django (ПР5–ПР6)
+
+Проект сохраняет консольное приложение и JSON-хранилище из ПР3. Для веб-интерфейса
+добавлены Django-проект `gift_project` и приложение `gift_web`.
+
+## Запуск
+
+```powershell
+.\.venv\Scripts\python.exe manage.py runserver
+```
+
+Основные страницы:
+
+- `/` — главная страница и навигация;
+- `/users/` — пользователи;
+- `/recipients/` — получатели и назначенные подарки;
+- `/gifts/` — подарки;
+- `/events/` — события.
+
+Веб-часть загружает объекты `User`, `Gift` и `Event` из JSON-файлов,
+использует именованные маршруты и Django Templates. ORM на этом этапе не
+используется согласно заданию. Общая разметка находится в `base.html`,
+навигация и карточка подарка подключаются через `{% include %}`, а CSS,
+изображение и JavaScript подключаются через `{% load static %}`. В шаблонах
+используются наследование, блоки, циклы, условия, `{% empty %}` и фильтры.
+
+Проверка Django-части:
+
+```powershell
+.\.venv\bin\python.exe manage.py check
+.\.venv\bin\python.exe manage.py test
+.\.venv\bin\pytest.exe -q
+.\.venv\bin\flake8.exe gift_project gift_web
+```
+
+Результат проверки: `manage.py check` без ошибок, Django-тесты `3 passed`,
+общий набор pytest `12 passed`, замечаний flake8 нет.
