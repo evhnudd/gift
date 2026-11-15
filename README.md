@@ -240,6 +240,11 @@ flake8 main.py gifts.py storage.py utils.py test_main.py tests
 
 # Слой базы данных SQLite (ПР7)
 
+> С ПР9 веб-часть работает через Django ORM (см. раздел «Django ORM» ниже).
+> Файлы ПР7 (`sql/`, `db/database.py`, `db/import_json.py`,
+> `data/gifts.sqlite`) сохранены как предыдущая реализация и как
+> **исходная база** для переноса данных в модели Django.
+
 ## Текущий этап разработки
 
 На ПР7 данные системы учета подарков перенесены из JSON в базу данных SQLite:
@@ -373,3 +378,100 @@ flake8 . --extend-exclude=venv
 
 Результат: `manage.py check` — без ошибок; Django-тесты — 12 passed;
 `pytest -v` — 18 passed; замечаний flake8 нет.
+
+
+# Django ORM (ПР9)
+
+## Быстрый запуск
+
+```powershell
+venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python manage.py migrate                 # таблицы Django по миграциям
+python db/import_sqlite_to_orm.py        # перенос данных из data/gifts.sqlite
+python manage.py runserver
+```
+
+Проверки:
+
+```powershell
+python manage.py check
+python manage.py makemigrations --check
+python manage.py showmigrations gift_web
+pytest -v
+flake8 . --extend-exclude=venv
+```
+
+`pytest` настроен через `pytest.ini` (pytest-django) и запускает и старые
+тесты ПР1–ПР7, и тесты Django (`gift_web/tests.py`).
+
+## Две базы данных
+
+| Файл | Назначение |
+|------|------------|
+| `data/gifts.sqlite` | исходная база ПР7, только читается при переносе |
+| `db.sqlite3` | база Django (`DATABASES` в `settings.py`), с ней работает ORM |
+
+`db.sqlite3` — локальные данные, файл исключён из Git. На новом компьютере
+база воссоздаётся командами `migrate` и `python db/import_sqlite_to_orm.py`.
+
+Выбрана стратегия «таблицы, управляемые Django, + перенос данных»: исходная
+база ПР7 не изменяется, Django создаёт свои таблицы миграцией `0001_initial`,
+а скрипт переносит записи с сохранением идентификаторов и связей в порядке
+`users → gifts → events`. Повторный запуск скрипта безопасен
+(`update_or_create`). Структуру исходной базы показывает
+`python db/inspect_source_db.py`.
+
+## Модели (`gift_web/models.py`)
+
+| Модель | Поля | Связи |
+|--------|------|-------|
+| `User` — пользователь/получатель | `name` CharField, `email` EmailField (unique) | — |
+| `Gift` — подарок | `name`, `price` и `delivery_cost` DecimalField, `delivery_date` DateField, `is_purchased` BooleanField | `recipient` → `User` (`on_delete=PROTECT`, `related_name="gifts"`) |
+| `Event` — событие | `title`, `event_date`, `description` (blank) | `user` → `User` (`CASCADE`, `related_name="events"`), `gift` → `Gift` (`SET_NULL`, `null=True`, `related_name="events"`) |
+
+* получателя с подарками удалить нельзя (`PROTECT`);
+* события пользователя удаляются вместе с ним (`CASCADE`);
+* при удалении подарка событие остаётся, но без подарка (`SET_NULL`).
+
+`User` — модель предметной области, а не встроенный пользователь
+`django.contrib.auth`.
+
+Полная стоимость подарка (`price + delivery_cost`) и текстовый статус
+вычисляются в SQL выражениями `F()` и `Case/When` в `annotate()`.
+
+## ORM-запросы проекта
+
+| Вид | Где | Выражение |
+|-----|-----|-----------|
+| Базовые | `index`, `gift_detail`, `recipient_detail` | `User.objects.count()`; `get_object_or_404(..., pk=...)` |
+| Фильтрация | `gift_list` | `filter(is_purchased=...)`; `filter(recipient_id=...)` + `delivery_date__gte/__lte` |
+| Поиск | `gift_list`, `user_list` | `name__icontains` / `recipient__name__icontains`; `name` или `email` |
+| Сортировка | `gift_list`, `statistics` | `order_by(*SORT_FIELDS[sort])` (в т. ч. `recipient__name`); `order_by("-gifts_count", "name")` |
+| Связи | `event_list`, `user_detail`, `gift_detail` | `select_related(...)`; обратная связь `user.events` |
+| Только нужные поля | `gift_list` | `annotate(total_cost=F(...) + F(...), recipient_name=F("recipient__name")).values(...)` |
+| Агрегирование | `statistics` | `aggregate(Count, Sum, Avg, Min, Max, Count(filter=Q(...)))` |
+| Группировка | `statistics`, `recipient_list` | `values("is_purchased").annotate(Count, Sum)`; `User.objects.annotate(Count("gifts"), Sum(...))` |
+| Аналог HAVING | `statistics` | `.filter(gifts_count__gte=min_gifts)` после `annotate` |
+| Ограничение | `statistics`, `index` | `[:3]` (LIMIT) |
+| Пагинация | `gift_list` | `Paginator(gifts, GIFTS_PER_PAGE)`, ссылки `{% querystring page=... %}` сохраняют фильтры |
+
+Сортировка задаётся только ключами словаря `SORT_FIELDS` (`views.py`).
+Параметры `request.GET` проверяются: неверная дата, сортировка или бюджет
+не вызывают ошибку — выводится сообщение.
+
+**Поиск кириллицы в SQLite.** SQLite сравнивает без учёта регистра только
+латиницу, поэтому `icontains="иван"` не находит «Иван». Функция
+`text_search_q()` ищет несколько вариантов написания.
+
+## Страницы
+
+| Адрес | Что показывает |
+|-------|----------------|
+| `/` | счётчики и три ближайших события |
+| `/users/?q=` | пользователи, поиск по имени или e-mail |
+| `/recipients/`, `/recipients/<id>/` | получатели с числом и суммой подарков; подарки получателя |
+| `/gifts/` | фильтр (поиск, получатель, статус заказа, период), сортировка, пагинация |
+| `/gifts/search/?budget=` | подарки в пределах бюджета |
+| `/events/?date_from=&date_to=` | события за период |
+| `/statistics/` | сводка, группировка по статусу и получателям, порог числа подарков |

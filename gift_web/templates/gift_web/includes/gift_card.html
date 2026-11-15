@@ -1,9 +1,10 @@
-<article class="card mb-3">
-    <div class="card-body">
-        <h2 class="card-title h4">{{ gift.name|default:"Без названия" }}</h2>
-        <p class="card-text">Получатель: <a href="{% url 'gift_web:recipient_detail' gift.recipient_id %}">{{ gift.recipient_name }}</a></p>
-        <p class="card-text">Стоимость с доставкой: {{ gift.total_cost|floatformat:2 }} руб.</p>
-        <p class="card-text text-muted">{{ gift.status }}</p>
-        <a href="{% url 'gift_web:gift_detail' gift.id %}" class="btn btn-primary">Подробнее</a>
+<article class="card mb-3 gift-card">
+    <div class="card-body d-flex gap-3">
+        <div class="flex-grow-1">
+            <h2 class="card-title h5">{{ gift.name }} {% include "gift_web/includes/status_badge.html" with status=gift.status label=gift.status_label %}</h2>
+            <p class="card-text mb-1">Получатель: <a href="{% url 'gift_web:recipient_detail' gift.recipient_id %}">{{ gift.recipient_name }}</a></p>
+            <p class="card-text mb-2">Доставка {{ gift.delivery_date|date:"d.m.Y" }} · итого {{ gift.total_cost|floatformat:2 }} руб.</p>
+            <a href="{% url 'gift_web:gift_detail' gift.id %}" class="btn btn-sm btn-primary">Подробнее</a>
+        </div>
     </div>
 </article>

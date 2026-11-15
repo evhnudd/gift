@@ -1,0 +1,4 @@
+[flake8]
+# Не проверяем служебные каталоги, окружения и автоматически
+# созданные Django миграции.
+exclude = .git,__pycache__,.pytest_cache,.venv,venv,media,migrations

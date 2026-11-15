@@ -3,5 +3,13 @@
 {% block content %}
 <h1>{{ user.name }}</h1>
 <p><strong>Электронная почта:</strong> {{ user.email }}</p>
-<a href="{% url 'gift_web:recipient_detail' user.id %}" class="btn btn-outline-primary">Открыть как получателя</a>
+<a href="{% url 'gift_web:recipient_detail' user.id %}" class="btn btn-outline-primary mb-4">Подарки получателя</a>
+<h2 class="h4">События пользователя</h2>
+<ul class="list-group">
+{% for event in events %}
+    <li class="list-group-item"><a href="{% url 'gift_web:event_detail' event.id %}">{{ event.title }}</a> — {{ event.event_date|date:"d.m.Y" }} · {{ event.gift.name|default:"подарок не выбран" }}</li>
+{% empty %}
+    <li class="list-group-item text-muted">Событий нет.</li>
+{% endfor %}
+</ul>
 {% endblock %}

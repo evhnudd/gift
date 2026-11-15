@@ -7,3 +7,6 @@ venv/
 /.vscode/*
 !/.vscode/
 !/.vscode/launch.json
+
+# Локальная база Django
+db.sqlite3

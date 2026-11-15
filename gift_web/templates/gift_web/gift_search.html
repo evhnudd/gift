@@ -5,13 +5,12 @@
 <form method="get" class="row g-2 align-items-end mb-4">
     <div class="col-auto">
         <label for="budget" class="form-label">Бюджет, руб.</label>
-        <input type="number" min="0" step="0.01" id="budget" name="budget" class="form-control"
-               value="{{ raw_budget|default:default_budget }}">
+        <input type="number" min="0" step="0.01" id="budget" name="budget" class="form-control" value="{{ raw_budget }}">
     </div>
     <div class="col-auto"><button type="submit" class="btn btn-primary">Найти</button></div>
 </form>
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
-{% if budget is not None %}
+{% if gifts is not None %}
     <h2 class="h4">Подарки до {{ budget|floatformat:2 }} руб. (с доставкой)</h2>
     {% for gift in gifts %}
         {% include "gift_web/includes/gift_card.html" %}

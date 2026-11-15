@@ -6,6 +6,7 @@ SECRET_KEY = "django-insecure-gift-study-project"
 DEBUG = True
 ALLOWED_HOSTS: list[str] = []
 
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -55,4 +56,7 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "gift_web" / "static"]
+
+# Количество подарков на одной странице списка.
+GIFTS_PER_PAGE = 3
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

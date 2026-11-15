@@ -1,15 +1,53 @@
 {% extends "base.html" %}
 {% block title %}Подарки{% endblock %}
 {% block content %}
-<h1>Подарки</h1>
-<div class="d-flex flex-wrap gap-2 mb-3">
-    <a class="btn btn-sm {% if not status %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'gift_web:gift_list' %}">Все</a>
-    <a class="btn btn-sm {% if status == 'not_purchased' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'gift_web:gift_list' %}?status=not_purchased">Не заказаны</a>
-    <a class="btn btn-sm {% if status == 'purchased' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'gift_web:gift_list' %}?status=purchased">Заказаны</a>
-    <a class="btn btn-sm btn-success ms-auto" href="{% url 'gift_web:gift_search' %}">Подобрать подарок по бюджету</a>
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Подарки</h1>
+    <a class="btn btn-outline-success" href="{% url 'gift_web:gift_search' %}">Подбор по бюджету</a>
 </div>
-<p>Найдено подарков: {{ gifts|length }}</p>
+<form method="get" class="card card-body mb-3 filter-form">
+    {% for error in errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+    <div class="row g-2 align-items-end">
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label" for="q">Поиск</label>
+            <input type="search" id="q" name="q" value="{{ params.q }}" class="form-control" placeholder="Название или получатель">
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label" for="recipient">Получатель</label>
+            <select id="recipient" name="recipient" class="form-select">
+                <option value="">Все получатели</option>
+                {% for user in recipients %}<option value="{{ user.id }}"{% if params.recipient == user.id|stringformat:"d" %} selected{% endif %}>{{ user.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label" for="status">Статус</label>
+            <select id="status" name="status" class="form-select">
+                <option value="">Все</option>
+                <option value="not_purchased"{% if params.status == "not_purchased" %} selected{% endif %}>Не заказаны</option>
+                <option value="purchased"{% if params.status == "purchased" %} selected{% endif %}>Заказаны</option>
+            </select>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label" for="sort">Сортировка</label>
+            <select id="sort" name="sort" class="form-select">
+                {% for value, label in sort_choices %}<option value="{{ value }}"{% if params.sort == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label" for="date_from">Доставка с</label>
+            <input type="date" id="date_from" name="date_from" value="{{ params.date_from }}" class="form-control">
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label" for="date_to">по</label>
+            <input type="date" id="date_to" name="date_to" value="{{ params.date_to }}" class="form-control">
+        </div>
+        <div class="col-auto"><button type="submit" class="btn btn-primary">Применить</button></div>
+        <div class="col-auto"><a class="btn btn-outline-secondary" href="{% url 'gift_web:gift_list' %}">Сбросить</a></div>
+    </div>
+</form>
+<p class="text-muted">Найдено подарков: {{ page_obj.paginator.count }}</p>
 {% for gift in gifts %}
     {% include "gift_web/includes/gift_card.html" %}
 {% empty %}<p>Подарки не найдены.</p>{% endfor %}
+{% include "gift_web/includes/pagination.html" %}
 {% endblock %}

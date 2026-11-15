@@ -13,11 +13,12 @@
     </div>
     <div class="col-auto"><button type="submit" class="btn btn-primary">Показать</button></div>
     <div class="col-auto"><a class="btn btn-outline-secondary" href="{% url 'gift_web:event_list' %}">Сбросить</a></div>
+    {% for error in errors %}<div class="col-12 alert alert-danger mb-0">{{ error }}</div>{% endfor %}
 </form>
 {% for event in events %}
 <div class="card mb-3"><div class="card-body">
     <h2 class="h5">{{ event.title }}</h2>
-    <p>{{ event.event_date }} · {{ event.user_name }} · {{ event.gift_name|default:"подарок не выбран" }}</p>
+    <p>{{ event.event_date|date:"d.m.Y" }} · {{ event.user.name }} · {{ event.gift.name|default:"подарок не выбран" }}</p>
     <a href="{% url 'gift_web:event_detail' event.id %}">Подробнее</a>
 </div></div>
 {% empty %}<p>События не найдены.</p>{% endfor %}

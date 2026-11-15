@@ -2,9 +2,15 @@
 {% block title %}Пользователи{% endblock %}
 {% block content %}
 <h1>Пользователи</h1>
+<form method="get" class="row g-2 mb-3">
+    <div class="col-auto"><input type="search" name="q" value="{{ query }}" class="form-control" placeholder="Имя или e-mail"></div>
+    <div class="col-auto"><button class="btn btn-primary">Найти</button></div>
+</form>
 <div class="list-group">
 {% for user in users %}
-    <a class="list-group-item list-group-item-action" href="{% url 'gift_web:user_detail' user.id %}">{{ user.name }} — {{ user.email }}</a>
+    <a class="list-group-item list-group-item-action d-flex justify-content-between" href="{% url 'gift_web:user_detail' user.id %}">
+        <span>{{ user.name }} — {{ user.email }}</span><span class="badge bg-secondary">{{ user.gifts_count }}</span>
+    </a>
 {% empty %}<p>Пользователи не найдены.</p>{% endfor %}
 </div>
 {% endblock %}

@@ -1,263 +1,145 @@
 """Представления веб-части.
 
-Начиная с ПР7 данные берутся из базы SQLite data/gifts.sqlite:
-представление выполняет SQL-запрос через sqlite3, получает строки
-sqlite3.Row и передает их в шаблон через context. Значения от
-пользователя подставляются только параметрами ?.
+С ПР9 данные получаются через Django ORM (модели gift_web/models.py),
+SQL-запросы через sqlite3 в представлениях больше не используются.
 """
 
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
-from django.http import Http404, HttpRequest, HttpResponse
-from django.shortcuts import render
+from django.conf import settings
+from django.core.paginator import Paginator
+from django.db.models import (
+    Avg,
+    Case,
+    CharField,
+    Count,
+    F,
+    Max,
+    Min,
+    Q,
+    Sum,
+    Value,
+    When,
+)
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, render
 
-from db.database import BASE_DIR, fetch_all, fetch_one
-from storage import load_settings
+from gift_web.models import Event, Gift, User, text_search_q
 
-
-# SQL-запросы страниц подарков. Первый параметр ? во всех запросах -
-# сегодняшняя дата для вычисления статуса заказа.
-GIFTS_SQL = """
-        SELECT
-            gifts.id,
-            gifts.name,
-            users.id AS recipient_id,
-            users.name AS recipient_name,
-            gifts.price,
-            gifts.delivery_cost,
-            gifts.price + gifts.delivery_cost AS total_cost,
-            gifts.delivery_date,
-            gifts.is_purchased,
-            CASE
-                WHEN gifts.is_purchased = 1 AND gifts.delivery_date >= ?
-                    THEN 'Подарок заказан и ожидается'
-                WHEN gifts.is_purchased = 1
-                    THEN 'Подарок заказан, но дата доставки прошла'
-                ELSE 'Подарок еще не заказан'
-            END AS status
-        FROM gifts
-        JOIN users
-            ON gifts.recipient_id = users.id
-        ORDER BY gifts.name;
-"""
-
-GIFTS_BY_STATUS_SQL = """
-        SELECT
-            gifts.id,
-            gifts.name,
-            users.id AS recipient_id,
-            users.name AS recipient_name,
-            gifts.price,
-            gifts.delivery_cost,
-            gifts.price + gifts.delivery_cost AS total_cost,
-            gifts.delivery_date,
-            gifts.is_purchased,
-            CASE
-                WHEN gifts.is_purchased = 1 AND gifts.delivery_date >= ?
-                    THEN 'Подарок заказан и ожидается'
-                WHEN gifts.is_purchased = 1
-                    THEN 'Подарок заказан, но дата доставки прошла'
-                ELSE 'Подарок еще не заказан'
-            END AS status
-        FROM gifts
-        JOIN users
-            ON gifts.recipient_id = users.id
-        WHERE gifts.is_purchased = ?
-        ORDER BY gifts.name;
-"""
-
-GIFT_DETAIL_SQL = """
-        SELECT
-            gifts.id,
-            gifts.name,
-            users.id AS recipient_id,
-            users.name AS recipient_name,
-            gifts.price,
-            gifts.delivery_cost,
-            gifts.price + gifts.delivery_cost AS total_cost,
-            gifts.delivery_date,
-            gifts.is_purchased,
-            CASE
-                WHEN gifts.is_purchased = 1 AND gifts.delivery_date >= ?
-                    THEN 'Подарок заказан и ожидается'
-                WHEN gifts.is_purchased = 1
-                    THEN 'Подарок заказан, но дата доставки прошла'
-                ELSE 'Подарок еще не заказан'
-            END AS status
-        FROM gifts
-        JOIN users
-            ON gifts.recipient_id = users.id
-        WHERE gifts.id = ?;
-"""
-
-RECIPIENT_GIFTS_SQL = """
-        SELECT
-            gifts.id,
-            gifts.name,
-            users.id AS recipient_id,
-            users.name AS recipient_name,
-            gifts.price,
-            gifts.delivery_cost,
-            gifts.price + gifts.delivery_cost AS total_cost,
-            gifts.delivery_date,
-            gifts.is_purchased,
-            CASE
-                WHEN gifts.is_purchased = 1 AND gifts.delivery_date >= ?
-                    THEN 'Подарок заказан и ожидается'
-                WHEN gifts.is_purchased = 1
-                    THEN 'Подарок заказан, но дата доставки прошла'
-                ELSE 'Подарок еще не заказан'
-            END AS status
-        FROM gifts
-        JOIN users
-            ON gifts.recipient_id = users.id
-        WHERE users.id = ?
-        ORDER BY gifts.name;
-"""
-
-GIFTS_WITHIN_BUDGET_SQL = """
-        SELECT
-            gifts.id,
-            gifts.name,
-            users.id AS recipient_id,
-            users.name AS recipient_name,
-            gifts.price,
-            gifts.delivery_cost,
-            gifts.price + gifts.delivery_cost AS total_cost,
-            gifts.delivery_date,
-            gifts.is_purchased,
-            CASE
-                WHEN gifts.is_purchased = 1 AND gifts.delivery_date >= ?
-                    THEN 'Подарок заказан и ожидается'
-                WHEN gifts.is_purchased = 1
-                    THEN 'Подарок заказан, но дата доставки прошла'
-                ELSE 'Подарок еще не заказан'
-            END AS status
-        FROM gifts
-        JOIN users
-            ON gifts.recipient_id = users.id
-        WHERE gifts.price + gifts.delivery_cost <= ?
-        ORDER BY total_cost;
-"""
-
-EVENTS_SQL = """
-        SELECT
-            events.id,
-            events.title,
-            events.event_date,
-            users.id AS user_id,
-            users.name AS user_name,
-            gifts.id AS gift_id,
-            gifts.name AS gift_name
-        FROM events
-        JOIN users
-            ON events.user_id = users.id
-        LEFT JOIN gifts
-            ON events.gift_id = gifts.id
-        ORDER BY events.event_date;
-"""
-
-EVENTS_IN_PERIOD_SQL = """
-        SELECT
-            events.id,
-            events.title,
-            events.event_date,
-            users.id AS user_id,
-            users.name AS user_name,
-            gifts.id AS gift_id,
-            gifts.name AS gift_name
-        FROM events
-        JOIN users
-            ON events.user_id = users.id
-        LEFT JOIN gifts
-            ON events.gift_id = gifts.id
-        WHERE events.event_date BETWEEN ? AND ?
-        ORDER BY events.event_date;
-"""
-
-GIFT_STATUS_FILTERS = {
-    "purchased": 1,
-    "not_purchased": 0,
+# Разрешённые значения параметра sort -> поля для order_by().
+# Пользовательское значение никогда не передаётся в order_by() напрямую.
+SORT_FIELDS = {
+    "date": ("delivery_date", "name"),
+    "-date": ("-delivery_date", "name"),
+    "cost": ("total_cost", "name"),
+    "-cost": ("-total_cost", "name"),
+    "name": ("name",),
+    "recipient": ("recipient__name", "delivery_date"),
 }
+SORT_CHOICES = [
+    ("date", "Дата доставки ↑"),
+    ("-date", "Дата доставки ↓"),
+    ("cost", "Стоимость ↑"),
+    ("-cost", "Стоимость ↓"),
+    ("name", "Название"),
+    ("recipient", "Получатель"),
+]
+DEFAULT_SORT = "date"
+
+# Полная стоимость считается в SQL: price + delivery_cost.
+TOTAL_COST = F("price") + F("delivery_cost")
 
 
-def _today() -> str:
-    return date.today().isoformat()
+def status_key():
+    """Код статуса для CSS: planned / ordered / delivered."""
+    return Case(
+        When(is_purchased=False, then=Value("planned")),
+        When(delivery_date__gte=date.today(), then=Value("ordered")),
+        default=Value("delivered"),
+        output_field=CharField(),
+    )
 
 
-def _default_budget() -> float:
-    settings = load_settings(BASE_DIR / "data" / "settings.json")
-    return float(settings.get("budget", 5000))
+def status_label():
+    """Текст статуса, как в ПР2–ПР7, вычисляется в SQL (CASE ... WHEN)."""
+    return Case(
+        When(is_purchased=False, then=Value("Подарок еще не заказан")),
+        When(
+            delivery_date__gte=date.today(),
+            then=Value("Подарок заказан и ожидается"),
+        ),
+        default=Value("Подарок заказан, но дата доставки прошла"),
+        output_field=CharField(),
+    )
+
+
+def gifts_with_details():
+    """Подарки с полной стоимостью, именем получателя и статусом."""
+    return Gift.objects.annotate(
+        total_cost=TOTAL_COST,
+        recipient_name=F("recipient__name"),
+        status=status_key(),
+        status_label=status_label(),
+    )
+
+
+def parse_date(value: str, errors: list[str], label: str):
+    """Строка YYYY-MM-DD -> date; при ошибке добавляет сообщение."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        errors.append(f"{label}: неверная дата «{value}».")
+        return None
 
 
 def index(request: HttpRequest) -> HttpResponse:
-    counts = fetch_one(
-        """
-        SELECT
-            (SELECT COUNT(*) FROM users) AS users_count,
-            (SELECT COUNT(*) FROM gifts) AS gifts_count,
-            (SELECT COUNT(*) FROM events) AS events_count;
-        """
-    )
     context = {
-        "users_count": counts["users_count"],
-        "gifts_count": counts["gifts_count"],
-        "events_count": counts["events_count"],
+        "users_count": User.objects.count(),
+        "gifts_count": Gift.objects.count(),
+        "events_count": Event.objects.count(),
+        # Три ближайших события (срез QuerySet -> LIMIT 3).
+        "upcoming_events": Event.objects.filter(
+            event_date__gte=date.today()
+        ).select_related("user")[:3],
     }
     return render(request, "gift_web/index.html", context)
 
 
 def user_list(request: HttpRequest) -> HttpResponse:
-    users = fetch_all(
-        """
-        SELECT
-            id,
-            name,
-            email
-        FROM users
-        ORDER BY name;
-        """
+    query = request.GET.get("q", "").strip()
+    users = User.objects.annotate(gifts_count=Count("gifts"))
+    if query:
+        # Поиск по нескольким полям: имя ИЛИ почта.
+        users = users.filter(text_search_q(query, "name", "email"))
+    users = users.order_by("name")
+    return render(
+        request,
+        "gift_web/user_list.html",
+        {"users": users, "query": query},
     )
-    return render(request, "gift_web/user_list.html", {"users": users})
-
-
-def _get_user_or_404(user_id: int, message: str):
-    user = fetch_one(
-        """
-        SELECT
-            id,
-            name,
-            email
-        FROM users
-        WHERE id = ?;
-        """,
-        [user_id],
-    )
-    if user is None:
-        raise Http404(message)
-    return user
 
 
 def user_detail(request: HttpRequest, user_id: int) -> HttpResponse:
-    user = _get_user_or_404(user_id, "Пользователь не найден")
-    return render(request, "gift_web/user_detail.html", {"user": user})
+    user = get_object_or_404(User, pk=user_id)
+    # Обратная связь через related_name="events".
+    events = user.events.select_related("gift").order_by("event_date")
+    return render(
+        request,
+        "gift_web/user_detail.html",
+        {"user": user, "events": events},
+    )
 
 
 def recipient_list(request: HttpRequest) -> HttpResponse:
-    recipients = fetch_all(
-        """
-        SELECT
-            users.id,
-            users.name,
-            COUNT(gifts.id) AS gifts_count,
-            COALESCE(SUM(gifts.price + gifts.delivery_cost), 0) AS total_sum
-        FROM users
-        LEFT JOIN gifts
-            ON gifts.recipient_id = users.id
-        GROUP BY users.id, users.name
-        ORDER BY users.name;
-        """
-    )
+    # annotate() выполняет LEFT JOIN: получатели без подарков
+    # тоже попадают в список (с количеством 0).
+    recipients = User.objects.annotate(
+        gifts_count=Count("gifts"),
+        total_sum=Sum(F("gifts__price") + F("gifts__delivery_cost")),
+    ).order_by("name")
     return render(
         request,
         "gift_web/recipient_list.html",
@@ -266,8 +148,10 @@ def recipient_list(request: HttpRequest) -> HttpResponse:
 
 
 def recipient_detail(request: HttpRequest, recipient_id: int) -> HttpResponse:
-    recipient = _get_user_or_404(recipient_id, "Получатель не найден")
-    gifts = fetch_all(RECIPIENT_GIFTS_SQL, [_today(), recipient_id])
+    recipient = get_object_or_404(User, pk=recipient_id)
+    gifts = gifts_with_details().filter(recipient=recipient).order_by(
+        "delivery_date"
+    )
     return render(
         request,
         "gift_web/recipient_detail.html",
@@ -276,46 +160,122 @@ def recipient_detail(request: HttpRequest, recipient_id: int) -> HttpResponse:
 
 
 def gift_list(request: HttpRequest) -> HttpResponse:
+    """Список подарков: фильтрация + поиск + сортировка + пагинация.
+
+    Параметры берутся из request.GET и проверяются вручную.
+    """
+    errors: list[str] = []
+    query = request.GET.get("q", "").strip()
     status = request.GET.get("status", "")
-    if status in GIFT_STATUS_FILTERS:
-        gifts = fetch_all(
-            GIFTS_BY_STATUS_SQL,
-            [_today(), GIFT_STATUS_FILTERS[status]],
-        )
+    recipient_id = request.GET.get("recipient", "")
+    date_from = parse_date(request.GET.get("date_from", ""), errors, "С")
+    date_to = parse_date(request.GET.get("date_to", ""), errors, "По")
+    sort = request.GET.get("sort", DEFAULT_SORT)
+    if sort not in SORT_FIELDS:
+        if sort:
+            errors.append("Неизвестный вариант сортировки.")
+        sort = DEFAULT_SORT
+    if date_from and date_to and date_from > date_to:
+        errors.append("Начальная дата периода не может быть позже конечной.")
+        date_from = date_to = None
+
+    gifts = Gift.objects.all()
+    if status == "purchased":
+        gifts = gifts.filter(is_purchased=True)
+    elif status == "not_purchased":
+        # exclude(): убираем из выборки уже заказанные подарки.
+        gifts = gifts.exclude(is_purchased=True)
     else:
         status = ""
-        gifts = fetch_all(GIFTS_SQL, [_today()])
+    if query:
+        gifts = gifts.filter(
+            text_search_q(query, "name", "recipient__name")
+        )
+    if recipient_id.isdigit():
+        gifts = gifts.filter(recipient_id=int(recipient_id))
+    if date_from:
+        gifts = gifts.filter(delivery_date__gte=date_from)
+    if date_to:
+        gifts = gifts.filter(delivery_date__lte=date_to)
+
+    # values() + annotate(F()) - только нужные поля, данные получателя
+    # берутся тем же SQL-запросом через JOIN.
+    gifts = (
+        gifts.annotate(
+            total_cost=TOTAL_COST,
+            recipient_name=F("recipient__name"),
+            status=status_key(),
+            status_label=status_label(),
+        )
+        .order_by(*SORT_FIELDS[sort])
+        .values(
+            "id",
+            "name",
+            "recipient_id",
+            "recipient_name",
+            "total_cost",
+            "delivery_date",
+            "status",
+            "status_label",
+        )
+    )
+
+    paginator = Paginator(gifts, settings.GIFTS_PER_PAGE)
+    page_obj = paginator.get_page(request.GET.get("page"))
     return render(
         request,
         "gift_web/gift_list.html",
-        {"gifts": gifts, "status": status},
+        {
+            "page_obj": page_obj,
+            "gifts": page_obj.object_list,
+            "errors": errors,
+            "recipients": User.objects.order_by("name"),
+            "sort_choices": SORT_CHOICES,
+            "params": {
+                "q": query,
+                "status": status,
+                "recipient": recipient_id,
+                "date_from": request.GET.get("date_from", ""),
+                "date_to": request.GET.get("date_to", ""),
+                "sort": sort,
+            },
+        },
     )
 
 
 def gift_detail(request: HttpRequest, gift_id: int) -> HttpResponse:
-    gift = fetch_one(GIFT_DETAIL_SQL, [_today(), gift_id])
-    if gift is None:
-        raise Http404("Подарок не найден")
-    return render(request, "gift_web/gift_detail.html", {"gift": gift})
+    # select_related: подарок и получатель - одним запросом с JOIN.
+    gift = get_object_or_404(
+        gifts_with_details().select_related("recipient"), pk=gift_id
+    )
+    return render(
+        request,
+        "gift_web/gift_detail.html",
+        {"gift": gift, "events": gift.events.all()},
+    )
 
 
 def gift_search(request: HttpRequest) -> HttpResponse:
-    """Поиск подарков, полная стоимость которых не превышает бюджет."""
+    """Подбор подарков, укладывающихся в бюджет."""
     raw_budget = request.GET.get("budget", "").strip()
     error = ""
-    gifts = []
+    gifts = None
     budget = None
     if raw_budget:
         try:
-            budget = float(raw_budget.replace(",", "."))
-        except ValueError:
+            budget = Decimal(raw_budget.replace(",", "."))
+        except InvalidOperation:
             error = "Бюджет должен быть числом."
         else:
             if budget < 0:
                 error = "Бюджет не может быть отрицательным."
                 budget = None
     if budget is not None:
-        gifts = fetch_all(GIFTS_WITHIN_BUDGET_SQL, [_today(), budget])
+        gifts = (
+            gifts_with_details()
+            .filter(total_cost__lte=budget)
+            .order_by("total_cost")
+        )
     return render(
         request,
         "gift_web/gift_search.html",
@@ -323,49 +283,36 @@ def gift_search(request: HttpRequest) -> HttpResponse:
             "gifts": gifts,
             "budget": budget,
             "raw_budget": raw_budget,
-            "default_budget": _default_budget(),
             "error": error,
         },
     )
 
 
 def event_list(request: HttpRequest) -> HttpResponse:
-    date_from = request.GET.get("date_from", "")
-    date_to = request.GET.get("date_to", "")
-    if date_from and date_to:
-        events = fetch_all(EVENTS_IN_PERIOD_SQL, [date_from, date_to])
-    else:
-        events = fetch_all(EVENTS_SQL)
+    errors: list[str] = []
+    date_from = parse_date(request.GET.get("date_from", ""), errors, "С")
+    date_to = parse_date(request.GET.get("date_to", ""), errors, "По")
+    events = Event.objects.select_related("user", "gift")
+    if date_from:
+        events = events.filter(event_date__gte=date_from)
+    if date_to:
+        events = events.filter(event_date__lte=date_to)
     return render(
         request,
         "gift_web/event_list.html",
-        {"events": events, "date_from": date_from, "date_to": date_to},
+        {
+            "events": events.order_by("event_date"),
+            "errors": errors,
+            "date_from": request.GET.get("date_from", ""),
+            "date_to": request.GET.get("date_to", ""),
+        },
     )
 
 
 def event_detail(request: HttpRequest, event_id: int) -> HttpResponse:
-    event = fetch_one(
-        """
-        SELECT
-            events.id,
-            events.title,
-            events.event_date,
-            events.description,
-            users.id AS user_id,
-            users.name AS user_name,
-            gifts.id AS gift_id,
-            gifts.name AS gift_name
-        FROM events
-        JOIN users
-            ON events.user_id = users.id
-        LEFT JOIN gifts
-            ON events.gift_id = gifts.id
-        WHERE events.id = ?;
-        """,
-        [event_id],
+    event = get_object_or_404(
+        Event.objects.select_related("user", "gift"), pk=event_id
     )
-    if event is None:
-        raise Http404("Событие не найдено")
     return render(request, "gift_web/event_detail.html", {"event": event})
 
 
@@ -374,75 +321,42 @@ def statistics(request: HttpRequest) -> HttpResponse:
         min_gifts = max(int(request.GET.get("min_gifts", 2)), 1)
     except ValueError:
         min_gifts = 2
-    summary = fetch_one(
-        """
-        SELECT
-            COUNT(*) AS gifts_count,
-            COALESCE(SUM(price + delivery_cost), 0) AS total_sum,
-            COALESCE(ROUND(AVG(price + delivery_cost), 2), 0) AS average_cost,
-            COALESCE(MIN(price + delivery_cost), 0) AS min_cost,
-            COALESCE(MAX(price + delivery_cost), 0) AS max_cost
-        FROM gifts;
-        """
+
+    # aggregate(): одна строка сводных показателей.
+    summary = Gift.objects.annotate(total_cost=TOTAL_COST).aggregate(
+        gifts_count=Count("id"),
+        total_sum=Sum("total_cost"),
+        average_cost=Avg("total_cost"),
+        min_cost=Min("total_cost"),
+        max_cost=Max("total_cost"),
+        purchased=Count("id", filter=Q(is_purchased=True)),
     )
-    by_recipient = fetch_all(
-        """
-        SELECT
-            users.id,
-            users.name AS recipient_name,
-            COUNT(gifts.id) AS gifts_count,
-            COALESCE(SUM(gifts.price + gifts.delivery_cost), 0) AS total_sum
-        FROM users
-        LEFT JOIN gifts
-            ON gifts.recipient_id = users.id
-        GROUP BY users.id, users.name
-        ORDER BY gifts_count DESC, users.name;
-        """
+    # GROUP BY is_purchased: values() + annotate().
+    by_status = (
+        Gift.objects.values("is_purchased")
+        .annotate(gifts_count=Count("id"), total_sum=Sum(TOTAL_COST))
+        .order_by("is_purchased")
     )
-    by_status = fetch_all(
-        """
-        SELECT
-            is_purchased,
-            COUNT(*) AS gifts_count,
-            SUM(price + delivery_cost) AS total_sum
-        FROM gifts
-        GROUP BY is_purchased
-        ORDER BY is_purchased;
-        """
+    # GROUP BY получатель (LEFT JOIN, получатели без подарков - с нулём).
+    by_recipient = User.objects.annotate(
+        gifts_count=Count("gifts"),
+        total_sum=Sum(F("gifts__price") + F("gifts__delivery_cost")),
+    ).order_by("-gifts_count", "name")
+    # Аналог HAVING: фильтр по аннотированному значению.
+    active_recipients = by_recipient.filter(gifts_count__gte=min_gifts)
+    top_gifts = (
+        Gift.objects.select_related("recipient")
+        .annotate(total_cost=TOTAL_COST)
+        .order_by("-total_cost")[:3]
     )
-    active_recipients = fetch_all(
-        """
-        SELECT
-            users.id,
-            users.name AS recipient_name,
-            COUNT(gifts.id) AS gifts_count
-        FROM users
-        JOIN gifts
-            ON gifts.recipient_id = users.id
-        GROUP BY users.id, users.name
-        HAVING COUNT(gifts.id) >= ?
-        ORDER BY gifts_count DESC;
-        """,
-        [min_gifts],
-    )
-    top_gifts = fetch_all(
-        """
-        SELECT
-            id,
-            name,
-            price + delivery_cost AS total_cost
-        FROM gifts
-        ORDER BY total_cost DESC
-        LIMIT 3;
-        """
-    )
+
     return render(
         request,
         "gift_web/statistics.html",
         {
             "summary": summary,
-            "by_recipient": by_recipient,
             "by_status": by_status,
+            "by_recipient": by_recipient,
             "active_recipients": active_recipients,
             "min_gifts": min_gifts,
             "top_gifts": top_gifts,
