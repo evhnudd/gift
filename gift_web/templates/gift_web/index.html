@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}Главная — Система учета подарков{% endblock %}
+{% block title %}Главная — {{ site_name }}{% endblock %}
 {% block content %}
 <div class="p-5 mb-4 rounded-3 hero">
     <img class="gift-logo mb-3" src="{% static 'gift_web/images/gift-box.svg' %}" alt="Подарочная коробка">
-    <h1>Система учета подарков</h1>
+    <h1>{{ site_name }}</h1>
     <p class="lead">Пользователи, получатели, подарки и события в одном веб-интерфейсе.</p>
     <a class="btn btn-primary" href="{% url 'gift_web:gift_list' %}">Открыть подарки</a>
 </div>
 <div class="row g-3 mb-4">
     <div class="col-md-4"><div class="card stat-card"><div class="card-body"><h2>{{ users_count }}</h2><p>пользователей</p><a href="{% url 'gift_web:user_list' %}">Перейти</a></div></div></div>
-    <div class="col-md-4"><div class="card stat-card"><div class="card-body"><h2>{{ gifts_count }}</h2><p>подарков</p><a href="{% url 'gift_web:gift_list' %}">Перейти</a></div></div></div>
+    <div class="col-md-4"><div class="card stat-card"><div class="card-body"><h2>{{ gifts_count }}</h2><p>актуальных подарков</p><a href="{% url 'gift_web:gift_list' %}">Перейти</a></div></div></div>
     <div class="col-md-4"><div class="card stat-card"><div class="card-body"><h2>{{ events_count }}</h2><p>событий</p><a href="{% url 'gift_web:event_list' %}">Перейти</a></div></div></div>
 </div>
 <h2 class="h4">Ближайшие события</h2>
@@ -21,4 +21,5 @@
     <li class="list-group-item text-muted">Предстоящих событий нет.</li>
 {% endfor %}
 </ul>
+<a href="{% url 'gift_web:events_need_gift' %}">События, для которых нужен подарок →</a>
 {% endblock %}

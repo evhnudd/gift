@@ -24,7 +24,6 @@ from django.db.models import (
 )
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
-
 from gift_web.models import Event, Gift, User, text_search_q
 
 # Разрешённые значения параметра sort -> поля для order_by().
@@ -46,42 +45,19 @@ SORT_CHOICES = [
     ("recipient", "Получатель"),
 ]
 DEFAULT_SORT = "date"
+STATUS_ALL = "all"
 
-# Полная стоимость считается в SQL: price + delivery_cost.
-TOTAL_COST = F("price") + F("delivery_cost")
+# Условие «подарок не отменён» для агрегатов по связанным подаркам.
+ACTIVE_GIFTS = ~Q(gifts__status=Gift.Status.CANCELLED)
 
-
-def status_key():
-    """Код статуса для CSS: planned / ordered / delivered."""
-    return Case(
-        When(is_purchased=False, then=Value("planned")),
-        When(delivery_date__gte=date.today(), then=Value("ordered")),
-        default=Value("delivered"),
-        output_field=CharField(),
-    )
-
-
-def status_label():
-    """Текст статуса, как в ПР2–ПР7, вычисляется в SQL (CASE ... WHEN)."""
-    return Case(
-        When(is_purchased=False, then=Value("Подарок еще не заказан")),
-        When(
-            delivery_date__gte=date.today(),
-            then=Value("Подарок заказан и ожидается"),
-        ),
-        default=Value("Подарок заказан, но дата доставки прошла"),
-        output_field=CharField(),
-    )
-
-
-def gifts_with_details():
-    """Подарки с полной стоимостью, именем получателя и статусом."""
-    return Gift.objects.annotate(
-        total_cost=TOTAL_COST,
-        recipient_name=F("recipient__name"),
-        status=status_key(),
-        status_label=status_label(),
-    )
+# Человекочитаемая подпись статуса, вычисляемая в SQL (CASE ... WHEN).
+STATUS_LABEL = Case(
+    *[
+        When(status=value, then=Value(label))
+        for value, label in Gift.Status.choices
+    ],
+    output_field=CharField(),
+)
 
 
 def parse_date(value: str, errors: list[str], label: str):
@@ -95,10 +71,19 @@ def parse_date(value: str, errors: list[str], label: str):
         return None
 
 
+def gifts_for_cards():
+    """Подарки с полями, которые нужны карточке gift_card.html."""
+    return Gift.objects.annotate(
+        recipient_name=F("recipient__name"),
+        recipient_slug=F("recipient__slug"),
+        status_label=STATUS_LABEL,
+    )
+
+
 def index(request: HttpRequest) -> HttpResponse:
     context = {
         "users_count": User.objects.count(),
-        "gifts_count": Gift.objects.count(),
+        "gifts_count": Gift.objects.active().count(),
         "events_count": Event.objects.count(),
         # Три ближайших события (срез QuerySet -> LIMIT 3).
         "upcoming_events": Event.objects.filter(
@@ -137,8 +122,8 @@ def recipient_list(request: HttpRequest) -> HttpResponse:
     # annotate() выполняет LEFT JOIN: получатели без подарков
     # тоже попадают в список (с количеством 0).
     recipients = User.objects.annotate(
-        gifts_count=Count("gifts"),
-        total_sum=Sum(F("gifts__price") + F("gifts__delivery_cost")),
+        gifts_count=Count("gifts", filter=ACTIVE_GIFTS),
+        total_sum=Sum("gifts__total_cost", filter=ACTIVE_GIFTS),
     ).order_by("name")
     return render(
         request,
@@ -147,9 +132,9 @@ def recipient_list(request: HttpRequest) -> HttpResponse:
     )
 
 
-def recipient_detail(request: HttpRequest, recipient_id: int) -> HttpResponse:
-    recipient = get_object_or_404(User, pk=recipient_id)
-    gifts = gifts_with_details().filter(recipient=recipient).order_by(
+def recipient_detail(request: HttpRequest, slug: str) -> HttpResponse:
+    recipient = get_object_or_404(User, slug=slug)
+    gifts = gifts_for_cards().filter(recipient=recipient).order_by(
         "delivery_date"
     )
     return render(
@@ -180,17 +165,15 @@ def gift_list(request: HttpRequest) -> HttpResponse:
         date_from = date_to = None
 
     gifts = Gift.objects.all()
-    if status == "purchased":
-        gifts = gifts.filter(is_purchased=True)
-    elif status == "not_purchased":
-        # exclude(): убираем из выборки уже заказанные подарки.
-        gifts = gifts.exclude(is_purchased=True)
+    if status == STATUS_ALL:
+        pass
+    elif status in Gift.Status.values:
+        gifts = gifts.filter(status=status)
     else:
         status = ""
+        gifts = gifts.active()
     if query:
-        gifts = gifts.filter(
-            text_search_q(query, "name", "recipient__name")
-        )
+        gifts = gifts.search(query)
     if recipient_id.isdigit():
         gifts = gifts.filter(recipient_id=int(recipient_id))
     if date_from:
@@ -202,17 +185,16 @@ def gift_list(request: HttpRequest) -> HttpResponse:
     # берутся тем же SQL-запросом через JOIN.
     gifts = (
         gifts.annotate(
-            total_cost=TOTAL_COST,
             recipient_name=F("recipient__name"),
-            status=status_key(),
-            status_label=status_label(),
+            recipient_slug=F("recipient__slug"),
+            status_label=STATUS_LABEL,
         )
         .order_by(*SORT_FIELDS[sort])
         .values(
             "id",
             "name",
-            "recipient_id",
             "recipient_name",
+            "recipient_slug",
             "total_cost",
             "delivery_date",
             "status",
@@ -230,6 +212,7 @@ def gift_list(request: HttpRequest) -> HttpResponse:
             "gifts": page_obj.object_list,
             "errors": errors,
             "recipients": User.objects.order_by("name"),
+            "status_choices": Gift.Status.choices,
             "sort_choices": SORT_CHOICES,
             "params": {
                 "q": query,
@@ -246,7 +229,7 @@ def gift_list(request: HttpRequest) -> HttpResponse:
 def gift_detail(request: HttpRequest, gift_id: int) -> HttpResponse:
     # select_related: подарок и получатель - одним запросом с JOIN.
     gift = get_object_or_404(
-        gifts_with_details().select_related("recipient"), pk=gift_id
+        Gift.objects.select_related("recipient"), pk=gift_id
     )
     return render(
         request,
@@ -256,7 +239,7 @@ def gift_detail(request: HttpRequest, gift_id: int) -> HttpResponse:
 
 
 def gift_search(request: HttpRequest) -> HttpResponse:
-    """Подбор подарков, укладывающихся в бюджет."""
+    """Подбор актуальных подарков, укладывающихся в бюджет."""
     raw_budget = request.GET.get("budget", "").strip()
     error = ""
     gifts = None
@@ -272,8 +255,9 @@ def gift_search(request: HttpRequest) -> HttpResponse:
                 budget = None
     if budget is not None:
         gifts = (
-            gifts_with_details()
-            .filter(total_cost__lte=budget)
+            gifts_for_cards()
+            .active()
+            .within_budget(budget)
             .order_by("total_cost")
         )
     return render(
@@ -316,45 +300,68 @@ def event_detail(request: HttpRequest, event_id: int) -> HttpResponse:
     return render(request, "gift_web/event_detail.html", {"event": event})
 
 
+def events_need_gift(request: HttpRequest) -> HttpResponse:
+    """События, для которых нужно подобрать подарок: подарок не выбран
+    или выбранный подарок отменён (отменённый подарок не считается)."""
+    events = (
+        Event.objects.filter(event_date__gte=date.today())
+        .filter(Q(gift__isnull=True) | Q(gift__status=Gift.Status.CANCELLED))
+        .select_related("user", "gift")
+        .order_by("event_date")
+    )
+    return render(
+        request, "gift_web/events_need_gift.html", {"events": events}
+    )
+
+
 def statistics(request: HttpRequest) -> HttpResponse:
     try:
         min_gifts = max(int(request.GET.get("min_gifts", 2)), 1)
     except ValueError:
         min_gifts = 2
 
-    # aggregate(): одна строка сводных показателей.
-    summary = Gift.objects.annotate(total_cost=TOTAL_COST).aggregate(
+    active = Gift.objects.active()
+    # aggregate(): одна строка сводных показателей по актуальным подаркам.
+    summary = active.aggregate(
         gifts_count=Count("id"),
         total_sum=Sum("total_cost"),
         average_cost=Avg("total_cost"),
         min_cost=Min("total_cost"),
         max_cost=Max("total_cost"),
-        purchased=Count("id", filter=Q(is_purchased=True)),
     )
-    # GROUP BY is_purchased: values() + annotate().
+    # Условный подсчёт: Count с filter=Q(...) для каждого статуса.
+    status_counts = Gift.objects.aggregate(
+        all_count=Count("id"),
+        planned=Count("id", filter=Q(status=Gift.Status.PLANNED)),
+        ordered=Count("id", filter=Q(status=Gift.Status.ORDERED)),
+        delivered=Count("id", filter=Q(status=Gift.Status.DELIVERED)),
+        cancelled=Count("id", filter=Q(status=Gift.Status.CANCELLED)),
+    )
+    # GROUP BY status: values() + annotate().
     by_status = (
-        Gift.objects.values("is_purchased")
-        .annotate(gifts_count=Count("id"), total_sum=Sum(TOTAL_COST))
-        .order_by("is_purchased")
+        Gift.objects.values("status")
+        .annotate(
+            status_label=STATUS_LABEL,
+            gifts_count=Count("id"),
+            total_sum=Sum("total_cost"),
+        )
+        .order_by("status")
     )
     # GROUP BY получатель (LEFT JOIN, получатели без подарков - с нулём).
     by_recipient = User.objects.annotate(
-        gifts_count=Count("gifts"),
-        total_sum=Sum(F("gifts__price") + F("gifts__delivery_cost")),
+        gifts_count=Count("gifts", filter=ACTIVE_GIFTS),
+        total_sum=Sum("gifts__total_cost", filter=ACTIVE_GIFTS),
     ).order_by("-gifts_count", "name")
     # Аналог HAVING: фильтр по аннотированному значению.
     active_recipients = by_recipient.filter(gifts_count__gte=min_gifts)
-    top_gifts = (
-        Gift.objects.select_related("recipient")
-        .annotate(total_cost=TOTAL_COST)
-        .order_by("-total_cost")[:3]
-    )
+    top_gifts = active.with_recipient().order_by("-total_cost")[:3]
 
     return render(
         request,
         "gift_web/statistics.html",
         {
             "summary": summary,
+            "status_counts": status_counts,
             "by_status": by_status,
             "by_recipient": by_recipient,
             "active_recipients": active_recipients,

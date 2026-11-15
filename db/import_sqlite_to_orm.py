@@ -32,6 +32,15 @@ def read_rows(connection: sqlite3.Connection, sql: str) -> list[sqlite3.Row]:
     return connection.execute(sql).fetchall()
 
 
+def status_from_pr7(is_purchased: int, delivery_date: date) -> str:
+    """Признак is_purchased из ПР7 -> статус модели (как в миграции 0003)."""
+    if not is_purchased:
+        return Gift.Status.PLANNED
+    if delivery_date >= date.today():
+        return Gift.Status.ORDERED
+    return Gift.Status.DELIVERED
+
+
 def to_money(value) -> Decimal:
     """REAL из SQLite -> Decimal с двумя знаками (без хвостов float)."""
     return Decimal(str(value)).quantize(Decimal("0.01"))
@@ -41,6 +50,10 @@ def to_money(value) -> Decimal:
 def import_data(source_db: Path = SOURCE_DB) -> dict[str, int]:
     """Переносит users -> gifts -> events. Повторный запуск безопасен:
     существующие записи обновляются по id (update_or_create).
+
+    Скрипт написан для текущей версии моделей: признак is_purchased из ПР7
+    сразу преобразуется в статус. Слаг пользователя формируется в
+    User.save(), итоговая стоимость подарка вычисляется базой данных.
     """
     if not source_db.exists():
         raise FileNotFoundError(f"Исходная база не найдена: {source_db}")
@@ -77,7 +90,7 @@ def import_data(source_db: Path = SOURCE_DB) -> dict[str, int]:
                 "price": to_money(row["price"]),
                 "delivery_cost": to_money(row["delivery_cost"]),
                 "delivery_date": delivery_date,
-                "is_purchased": bool(row["is_purchased"]),
+                "status": status_from_pr7(row["is_purchased"], delivery_date),
             },
         )
 

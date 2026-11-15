@@ -11,7 +11,7 @@
 </form>
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 {% if gifts is not None %}
-    <h2 class="h4">Подарки до {{ budget|floatformat:2 }} руб. (с доставкой)</h2>
+    <h2 class="h4">Актуальные подарки до {{ budget|floatformat:2 }} руб. (с доставкой)</h2>
     {% for gift in gifts %}
         {% include "gift_web/includes/gift_card.html" %}
     {% empty %}

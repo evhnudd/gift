@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Нужен подарок{% endblock %}
+{% block content %}
+<h1>События, для которых нужен подарок</h1>
+<p class="text-muted">Предстоящие события, у которых подарок не выбран или выбранный подарок отменён.</p>
+{% for event in events %}
+<div class="card mb-3"><div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+        <h2 class="h5 mb-1"><a href="{% url 'gift_web:event_detail' event.id %}">{{ event.title }}</a></h2>
+        <span>{{ event.event_date|date:"d.m.Y" }} · {{ event.user.name }}{% if event.gift %} · отменён: {{ event.gift.name }}{% endif %}</span>
+    </div>
+    <a class="btn btn-sm btn-success" href="{% url 'gift_web:gift_search' %}">Подобрать по бюджету</a>
+</div></div>
+{% empty %}<p>Для всех предстоящих событий подарки выбраны.</p>{% endfor %}
+{% endblock %}

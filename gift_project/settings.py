@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 
@@ -6,6 +7,8 @@ SECRET_KEY = "django-insecure-gift-study-project"
 DEBUG = True
 ALLOWED_HOSTS: list[str] = []
 
+# Признак запуска автотестов: Debug Toolbar в тестах не подключается.
+TESTING = "test" in sys.argv or "pytest" in sys.modules
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -14,7 +17,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "gift_web",
+    "gift_web.apps.GiftWebConfig",
 ]
 
 MIDDLEWARE = [
@@ -27,6 +30,14 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+# Django Debug Toolbar - только при разработке (DEBUG) и не в тестах.
+if DEBUG and not TESTING:
+    INSTALLED_APPS.append("debug_toolbar")
+    MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
+    INTERNAL_IPS = ["127.0.0.1"]
+    # Панель свёрнута, пока её не откроют кнопкой «DjDT» справа.
+    DEBUG_TOOLBAR_CONFIG = {"SHOW_COLLAPSED": True}
+
 ROOT_URLCONF = "gift_project.urls"
 TEMPLATES = [
     {
@@ -38,6 +49,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "gift_web.context_processors.site_context",
             ],
         },
     }

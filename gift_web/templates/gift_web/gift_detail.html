@@ -3,9 +3,9 @@
 {% block content %}
 <div class="row g-4">
     <div class="col">
-        <h1>{{ gift.name }} {% include "gift_web/includes/status_badge.html" with status=gift.status label=gift.status_label %}</h1>
+        <h1>{{ gift.name }} {% include "gift_web/includes/status_badge.html" with status=gift.status label=gift.get_status_display %}</h1>
         <dl class="row">
-            <dt class="col-sm-4">Получатель</dt><dd class="col-sm-8"><a href="{% url 'gift_web:recipient_detail' gift.recipient_id %}">{{ gift.recipient.name }}</a></dd>
+            <dt class="col-sm-4">Получатель</dt><dd class="col-sm-8"><a href="{{ gift.recipient.get_absolute_url }}">{{ gift.recipient.name }}</a></dd>
             <dt class="col-sm-4">Стоимость</dt><dd class="col-sm-8">{{ gift.price|floatformat:2 }} руб.</dd>
             <dt class="col-sm-4">Доставка</dt><dd class="col-sm-8">{{ gift.delivery_cost|floatformat:2 }} руб.</dd>
             <dt class="col-sm-4">Итого</dt><dd class="col-sm-8">{{ gift.total_cost|floatformat:2 }} руб.</dd>
