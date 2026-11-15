@@ -16,7 +16,9 @@ urlpatterns = [
         name="recipient_detail",
     ),
     path("gifts/", views.gift_list, name="gift_list"),
+    path("gifts/search/", views.gift_search, name="gift_search"),
     path("gifts/<int:gift_id>/", views.gift_detail, name="gift_detail"),
     path("events/", views.event_list, name="event_list"),
     path("events/<int:event_id>/", views.event_detail, name="event_detail"),
+    path("statistics/", views.statistics, name="statistics"),
 ]

@@ -14,5 +14,21 @@
         "user_id": 2,
         "gift_id": 2,
         "description": "Уточнить время вручения."
+    },
+    {
+        "id": 3,
+        "title": "Годовщина Анны",
+        "event_date": "2026-12-25",
+        "user_id": 1,
+        "gift_id": 5,
+        "description": "Вручить подарок вечером."
+    },
+    {
+        "id": 4,
+        "title": "Новый год у Марии",
+        "event_date": "2026-12-31",
+        "user_id": 3,
+        "gift_id": 6,
+        "description": ""
     }
 ]

@@ -2,7 +2,13 @@
 {% block title %}Подарки{% endblock %}
 {% block content %}
 <h1>Подарки</h1>
-<p>Всего подарков: {{ gifts|length }}</p>
+<div class="d-flex flex-wrap gap-2 mb-3">
+    <a class="btn btn-sm {% if not status %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'gift_web:gift_list' %}">Все</a>
+    <a class="btn btn-sm {% if status == 'not_purchased' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'gift_web:gift_list' %}?status=not_purchased">Не заказаны</a>
+    <a class="btn btn-sm {% if status == 'purchased' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'gift_web:gift_list' %}?status=purchased">Заказаны</a>
+    <a class="btn btn-sm btn-success ms-auto" href="{% url 'gift_web:gift_search' %}">Подобрать подарок по бюджету</a>
+</div>
+<p>Найдено подарков: {{ gifts|length }}</p>
 {% for gift in gifts %}
     {% include "gift_web/includes/gift_card.html" %}
 {% empty %}<p>Подарки не найдены.</p>{% endfor %}

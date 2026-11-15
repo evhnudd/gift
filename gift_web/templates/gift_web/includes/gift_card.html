@@ -1,8 +1,9 @@
 <article class="card mb-3">
     <div class="card-body">
         <h2 class="card-title h4">{{ gift.name|default:"Без названия" }}</h2>
-        <p class="card-text">Получатель: <a href="{% url 'gift_web:recipient_detail' gift.recipient.id %}">{{ gift.recipient.name }}</a></p>
-        <p class="card-text">Стоимость: {{ gift.total_cost|floatformat:2 }} руб.</p>
+        <p class="card-text">Получатель: <a href="{% url 'gift_web:recipient_detail' gift.recipient_id %}">{{ gift.recipient_name }}</a></p>
+        <p class="card-text">Стоимость с доставкой: {{ gift.total_cost|floatformat:2 }} руб.</p>
+        <p class="card-text text-muted">{{ gift.status }}</p>
         <a href="{% url 'gift_web:gift_detail' gift.id %}" class="btn btn-primary">Подробнее</a>
     </div>
 </article>

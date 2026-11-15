@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Статистика{% endblock %}
+{% block content %}
+<h1>Статистика подарков</h1>
+<div class="row g-3 mb-4">
+    <div class="col-md"><div class="card stat-card"><div class="card-body"><h2>{{ summary.gifts_count }}</h2><p>подарков всего</p></div></div></div>
+    <div class="col-md"><div class="card stat-card"><div class="card-body"><h2>{{ summary.total_sum|floatformat:0 }}</h2><p>руб. общая сумма</p></div></div></div>
+    <div class="col-md"><div class="card stat-card"><div class="card-body"><h2>{{ summary.average_cost|floatformat:0 }}</h2><p>руб. в среднем</p></div></div></div>
+    <div class="col-md"><div class="card stat-card"><div class="card-body"><h2>{{ summary.min_cost|floatformat:0 }}–{{ summary.max_cost|floatformat:0 }}</h2><p>руб. мин. и макс.</p></div></div></div>
+</div>
+
+<h2 class="h4">По получателям</h2>
+<table class="table">
+    <thead><tr><th>Получатель</th><th>Подарков</th><th>Сумма, руб.</th></tr></thead>
+    <tbody>
+    {% for row in by_recipient %}
+        <tr><td><a href="{% url 'gift_web:recipient_detail' row.id %}">{{ row.recipient_name }}</a></td><td>{{ row.gifts_count }}</td><td>{{ row.total_sum|floatformat:2 }}</td></tr>
+    {% empty %}<tr><td colspan="3">Данные отсутствуют.</td></tr>{% endfor %}
+    </tbody>
+</table>
+
+<h2 class="h4">По статусу заказа</h2>
+<table class="table">
+    <thead><tr><th>Статус</th><th>Подарков</th><th>Сумма, руб.</th></tr></thead>
+    <tbody>
+    {% for row in by_status %}
+        <tr><td>{% if row.is_purchased %}Заказаны{% else %}Не заказаны{% endif %}</td><td>{{ row.gifts_count }}</td><td>{{ row.total_sum|floatformat:2 }}</td></tr>
+    {% empty %}<tr><td colspan="3">Данные отсутствуют.</td></tr>{% endfor %}
+    </tbody>
+</table>
+
+<h2 class="h4">Получатели с большим числом подарков</h2>
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label for="min_gifts" class="form-label">Не меньше подарков</label>
+        <input type="number" min="1" id="min_gifts" name="min_gifts" class="form-control" value="{{ min_gifts }}">
+    </div>
+    <div class="col-auto"><button type="submit" class="btn btn-primary">Показать</button></div>
+</form>
+<ul>
+{% for row in active_recipients %}
+    <li>{{ row.recipient_name }} — {{ row.gifts_count }}</li>
+{% empty %}<li>Нет получателей с таким количеством подарков.</li>{% endfor %}
+</ul>
+
+<h2 class="h4">Самые дорогие подарки</h2>
+<ol>
+{% for gift in top_gifts %}
+    <li><a href="{% url 'gift_web:gift_detail' gift.id %}">{{ gift.name }}</a> — {{ gift.total_cost|floatformat:2 }} руб.</li>
+{% empty %}<li>Подарков пока нет.</li>{% endfor %}
+</ol>
+{% endblock %}

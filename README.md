@@ -237,3 +237,139 @@ flake8 main.py gifts.py storage.py utils.py test_main.py tests
 
 Результат проверки: `manage.py check` без ошибок, Django-тесты `3 passed`,
 общий набор pytest `12 passed`, замечаний flake8 нет.
+
+# Слой базы данных SQLite (ПР7)
+
+## Текущий этап разработки
+
+На ПР7 данные системы учета подарков перенесены из JSON в базу данных SQLite:
+
+- создана база данных `data/gifts.sqlite`;
+- таблицы созданы с помощью `sql/schema.sql`;
+- данные перенесены из JSON скриптом `db/import_json.py`;
+- SQL-запросы сохранены в `sql/queries.sql` (16 запросов);
+- Django-представления получают данные из SQLite через `sqlite3`
+  и `sqlite3.Row`;
+- страницы пользователей, получателей, подарков, событий, поиска подарков
+  по бюджету и статистики работают с базой данных.
+
+JSON-файлы и модули ПР1–ПР3 (`storage.py`, `gifts.py`, `users.py`) сохранены:
+консольное приложение по-прежнему работает с JSON, а JSON-файлы служат
+исходными данными для импорта. Django ORM на этом этапе не используется.
+
+## Структура базы данных
+
+Таблица `users` — пользователи (они же получатели подарков):
+
+| Поле  | Тип     | Назначение                          |
+|-------|---------|-------------------------------------|
+| id    | INTEGER | идентификатор, первичный ключ       |
+| name  | TEXT    | имя, NOT NULL                       |
+| email | TEXT    | электронная почта, NOT NULL, UNIQUE |
+
+Таблица `gifts` — подарки:
+
+| Поле          | Тип     | Назначение                                  |
+|---------------|---------|---------------------------------------------|
+| id            | INTEGER | идентификатор, первичный ключ               |
+| name          | TEXT    | название, NOT NULL                          |
+| recipient_id  | INTEGER | внешний ключ на `users.id`, NOT NULL        |
+| price         | REAL    | стоимость подарка, `CHECK (price >= 0)`     |
+| delivery_cost | REAL    | стоимость доставки, DEFAULT 0               |
+| delivery_date | TEXT    | дата доставки в формате `YYYY-MM-DD`        |
+| is_purchased  | INTEGER | признак заказа: 0 — не заказан, 1 — заказан |
+
+Таблица `events` — события календаря:
+
+| Поле        | Тип     | Назначение                                     |
+|-------------|---------|------------------------------------------------|
+| id          | INTEGER | идентификатор, первичный ключ                  |
+| title       | TEXT    | название события, NOT NULL                     |
+| event_date  | TEXT    | дата события в формате `YYYY-MM-DD`            |
+| user_id     | INTEGER | внешний ключ на `users.id`, NOT NULL           |
+| gift_id     | INTEGER | внешний ключ на `gifts.id`, допускает NULL     |
+| description | TEXT    | описание, допускает NULL                       |
+
+Связи: `gifts.recipient_id → users.id`, `events.user_id → users.id`,
+`events.gift_id → gifts.id`. Проверка внешних ключей включается в
+`db/database.py` командой `PRAGMA foreign_keys = ON` при каждом подключении.
+
+## Файлы слоя базы данных
+
+- `sql/schema.sql` — команды `CREATE TABLE IF NOT EXISTS`;
+- `sql/queries.sql` — проверенные SQL-запросы с комментариями;
+- `db/database.py` — `get_connection()`, `create_schema()`, `fetch_all()`,
+  `fetch_one()`;
+- `db/import_json.py` — перенос данных из `data/users.json`,
+  `data/gifts.json`, `data/events.json` с помощью `executemany()`;
+- `data/gifts.sqlite` — файл базы данных;
+- `tests/test_database.py` — тесты схемы, ключей и импорта.
+
+## Создание базы и импорт данных
+
+```powershell
+python -m db.import_json
+```
+
+Скрипт создает таблицы (если их нет), очищает их и загружает данные заново в
+одной транзакции, поэтому его можно запускать повторно. Порядок импорта:
+`users` → `gifts` → `events`, так как подарки и события ссылаются на
+пользователей и подарки.
+
+Проверка в интерактивном Python:
+
+```python
+import sqlite3
+conn = sqlite3.connect("data/gifts.sqlite")
+conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+conn.execute("PRAGMA foreign_key_list(gifts)").fetchall()
+conn.execute("SELECT COUNT(*) FROM gifts").fetchone()
+```
+
+## SQL-запросы (`sql/queries.sql`)
+
+| Вид                 | Запросы                                                        |
+|---------------------|----------------------------------------------------------------|
+| Выборка списков     | 1 — пользователи; 2 — подарки с полной стоимостью; 3 — топ-3 (LIMIT) |
+| Фильтрация WHERE    | 4 — подарки в пределах бюджета; 5 — не заказанные; 6 — события за период (BETWEEN); 7 — события без описания (IS NULL) |
+| Соединение JOIN     | 8 — подарки с получателем и статусом; 9 — события с пользователем и подарком (3 таблицы); 10 — подарки получателя |
+| Агрегатные функции  | 11 — количество записей; 12 — COUNT/SUM/AVG/MIN/MAX; 13 — сумма заказанных |
+| GROUP BY / HAVING   | 14 — подарки по получателям; 15 — по статусу заказа; 16 — получатели с N и более подарками (HAVING) |
+
+Проверка в SQLite CLI:
+
+```powershell
+sqlite3 data/gifts.sqlite
+.headers on
+.mode column
+.read sql/queries.sql
+```
+
+## Страницы, использующие SQLite
+
+- `/` — количество пользователей, подарков и событий (запрос 11);
+- `/users/`, `/users/<id>/` — пользователи (запрос 1, `WHERE id = ?`);
+- `/recipients/` — получатели с количеством и суммой подарков (запрос 14);
+- `/recipients/<id>/` — подарки получателя (запрос 10, JOIN);
+- `/gifts/` — подарки с получателем и статусом (запрос 8), фильтр
+  `?status=not_purchased|purchased` (запрос 5);
+- `/gifts/search/?budget=...` — подбор подарков по бюджету (запрос 4,
+  параметр `?`);
+- `/events/?date_from=...&date_to=...` — события за период (запросы 6 и 9);
+- `/statistics/?min_gifts=...` — статистика (запросы 3, 12, 14, 15, 16).
+
+Значения, введенные пользователем, передаются в SQL только параметрами `?`,
+например `fetch_all(GIFTS_WITHIN_BUDGET_SQL, [_today(), budget])`.
+Конкатенация и f-строки для подстановки значений не используются.
+
+## Проверка ПР7
+
+```powershell
+python manage.py check
+python manage.py test
+pytest -v
+flake8 . --extend-exclude=venv
+```
+
+Результат: `manage.py check` — без ошибок; Django-тесты — 12 passed;
+`pytest -v` — 18 passed; замечаний flake8 нет.

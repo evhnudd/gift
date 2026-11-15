@@ -16,5 +16,41 @@
         "delivery_cost": 250.0,
         "delivery_date": "2026-10-05",
         "is_purchased": false
+    },
+    {
+        "id": 3,
+        "name": "Книга по фотографии",
+        "recipient_id": 1,
+        "price": 1500.0,
+        "delivery_cost": 200.0,
+        "delivery_date": "2026-11-15",
+        "is_purchased": true
+    },
+    {
+        "id": 4,
+        "name": "Термокружка",
+        "recipient_id": 3,
+        "price": 900.0,
+        "delivery_cost": 150.0,
+        "delivery_date": "2026-12-20",
+        "is_purchased": false
+    },
+    {
+        "id": 5,
+        "name": "Умная колонка",
+        "recipient_id": 1,
+        "price": 6500.0,
+        "delivery_cost": 0.0,
+        "delivery_date": "2026-12-25",
+        "is_purchased": true
+    },
+    {
+        "id": 6,
+        "name": "Набор для рисования",
+        "recipient_id": 3,
+        "price": 2300.0,
+        "delivery_cost": 300.0,
+        "delivery_date": "2026-12-28",
+        "is_purchased": true
     }
 ]

@@ -2,10 +2,22 @@
 {% block title %}События{% endblock %}
 {% block content %}
 <h1>События</h1>
+<form method="get" class="row g-2 align-items-end mb-4">
+    <div class="col-auto">
+        <label for="date_from" class="form-label">С</label>
+        <input type="date" id="date_from" name="date_from" class="form-control" value="{{ date_from }}">
+    </div>
+    <div class="col-auto">
+        <label for="date_to" class="form-label">По</label>
+        <input type="date" id="date_to" name="date_to" class="form-control" value="{{ date_to }}">
+    </div>
+    <div class="col-auto"><button type="submit" class="btn btn-primary">Показать</button></div>
+    <div class="col-auto"><a class="btn btn-outline-secondary" href="{% url 'gift_web:event_list' %}">Сбросить</a></div>
+</form>
 {% for event in events %}
 <div class="card mb-3"><div class="card-body">
     <h2 class="h5">{{ event.title }}</h2>
-    <p>{{ event.event_date|date:"d.m.Y" }} · пользователь №{{ event.user_id }} · подарок №{{ event.gift_id }}</p>
+    <p>{{ event.event_date }} · {{ event.user_name }} · {{ event.gift_name|default:"подарок не выбран" }}</p>
     <a href="{% url 'gift_web:event_detail' event.id %}">Подробнее</a>
 </div></div>
 {% empty %}<p>События не найдены.</p>{% endfor %}
