@@ -16,8 +16,15 @@ urlpatterns = [
         name="recipient_detail",
     ),
     path("gifts/", views.gift_list, name="gift_list"),
+    path("gifts/new/", views.gift_create, name="gift_create"),
     path("gifts/search/", views.gift_search, name="gift_search"),
     path("gifts/<int:gift_id>/", views.gift_detail, name="gift_detail"),
+    path("gifts/<int:gift_id>/edit/", views.gift_edit, name="gift_edit"),
+    path(
+        "gifts/<int:gift_id>/cancel/",
+        views.gift_cancel,
+        name="gift_cancel",
+    ),
     path("events/", views.event_list, name="event_list"),
     path(
         "events/need-gift/",

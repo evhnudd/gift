@@ -8,5 +8,9 @@ venv/
 !/.vscode/
 !/.vscode/launch.json
 
-# Локальная база Django
+# Локальная база Django и загруженные пользователями файлы
 db.sqlite3
+media/
+
+# Скриншоты для отчётов
+screenshots_PR9-11/

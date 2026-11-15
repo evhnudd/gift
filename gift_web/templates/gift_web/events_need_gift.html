@@ -9,7 +9,7 @@
         <h2 class="h5 mb-1"><a href="{% url 'gift_web:event_detail' event.id %}">{{ event.title }}</a></h2>
         <span>{{ event.event_date|date:"d.m.Y" }} · {{ event.user.name }}{% if event.gift %} · отменён: {{ event.gift.name }}{% endif %}</span>
     </div>
-    <a class="btn btn-sm btn-success" href="{% url 'gift_web:gift_search' %}">Подобрать по бюджету</a>
+    <a class="btn btn-sm btn-success" href="{% url 'gift_web:gift_create' %}?recipient={{ event.user_id }}">Подобрать подарок</a>
 </div></div>
 {% empty %}<p>Для всех предстоящих событий подарки выбраны.</p>{% endfor %}
 {% endblock %}

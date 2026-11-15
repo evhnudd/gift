@@ -3,6 +3,7 @@
 {% block content %}
 <h1>Получатель: {{ recipient.name }}</h1>
 <p>Связанный пользователь: <a href="{% url 'gift_web:user_detail' recipient.id %}">{{ recipient.email }}</a></p>
+<a class="btn btn-success mb-3" href="{% url 'gift_web:gift_create' %}?recipient={{ recipient.id }}">+ Подарок для {{ recipient.name }}</a>
 <h2 class="h4">Подарки ({{ gifts|length }})</h2>
 {% for gift in gifts %}
     {% include "gift_web/includes/gift_card.html" %}

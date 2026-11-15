@@ -145,6 +145,13 @@ class Gift(models.Model):
         verbose_name="итого, руб.",
     )
 
+    image = models.ImageField(
+        "фото подарка",
+        upload_to="gifts/",
+        blank=True,
+        help_text="Необязательно. Файл JPG, PNG или WEBP до 2 МБ.",
+    )
+
     objects = GiftQuerySet.as_manager()
 
     class Meta:
@@ -161,6 +168,11 @@ class Gift(models.Model):
     @property
     def is_active(self) -> bool:
         return self.status != self.Status.CANCELLED
+
+    def cancel(self) -> None:
+        """Отмена подарка: запись сохраняется, меняется только статус."""
+        self.status = self.Status.CANCELLED
+        self.save(update_fields=["status"])
 
 
 class Event(models.Model):

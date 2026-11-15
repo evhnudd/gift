@@ -1,21 +1,34 @@
-"""Автотесты веб-части: модели, ORM-запросы и представления.
+"""Автотесты веб-части: модели, ORM-запросы, представления и формы.
 
 Тесты создают собственные данные в тестовой базе, поэтому не зависят
 от содержимого рабочей базы db.sqlite3.
 """
 
+import shutil
+import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import ProtectedError
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from PIL import Image
 
+from gift_web.forms import GiftForm
 from gift_web.models import Event, Gift, User
 
 TODAY = date.today()
 SOON = TODAY + timedelta(days=10)
 LATER = TODAY + timedelta(days=40)
+
+
+def make_png() -> bytes:
+    """Небольшое корректное PNG-изображение для проверки загрузки."""
+    buffer = BytesIO()
+    Image.new("RGB", (10, 10), "red").save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 class BaseData(TestCase):
@@ -95,6 +108,11 @@ class ModelTests(BaseData):
         self.assertEqual(
             list(Gift.objects.within_budget(2000)), [self.book]
         )
+
+    def test_cancel_keeps_record(self):
+        self.headphones.cancel()
+        gift = Gift.objects.get(pk=self.headphones.pk)
+        self.assertEqual(gift.status, Gift.Status.CANCELLED)
 
     def test_protect_on_delete_recipient(self):
         with self.assertRaises(ProtectedError):
@@ -178,7 +196,7 @@ class GiftListTests(BaseData):
     def test_unknown_sort_and_bad_date_do_not_crash(self):
         response = self.client.get("/gifts/?sort=id;drop&date_from=31-31-2026")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context["errors"]), 2)
+        self.assertTrue(response.context["form"].errors)
 
     def test_period_validation_message(self):
         response = self.client.get(
@@ -203,7 +221,7 @@ class GiftListTests(BaseData):
     def test_budget_search_invalid_value(self):
         response = self.client.get("/gifts/search/?budget=-5")
         self.assertIsNone(response.context["gifts"])
-        self.assertContains(response, "не может быть отрицательным")
+        self.assertTrue(response.context["form"].errors)
 
 
 class StatisticsTests(BaseData):
@@ -232,3 +250,163 @@ class StatisticsTests(BaseData):
     def test_events_need_gift_counts_cancelled_gift(self):
         response = self.client.get(reverse("gift_web:events_need_gift"))
         self.assertEqual(list(response.context["events"]), [self.party])
+
+
+class GiftFormTests(BaseData):
+    def form_data(self, **overrides):
+        data = {
+            "name": "Термокружка",
+            "recipient": self.olga.pk,
+            "price": "900",
+            "delivery_cost": "150",
+            "delivery_date": SOON.isoformat(),
+        }
+        data.update(overrides)
+        return data
+
+    def test_valid_form(self):
+        self.assertTrue(GiftForm(data=self.form_data()).is_valid())
+
+    def test_past_date_rejected(self):
+        form = GiftForm(data=self.form_data(delivery_date="2020-01-01"))
+        self.assertIn("delivery_date", form.errors)
+
+    def test_only_digits_name_rejected(self):
+        form = GiftForm(data=self.form_data(name="12345"))
+        self.assertIn("name", form.errors)
+
+    def test_delivery_more_expensive_than_gift(self):
+        form = GiftForm(data=self.form_data(delivery_cost="1000"))
+        self.assertIn("delivery_cost", form.errors)
+
+    def test_conflict_with_active_gift(self):
+        form = GiftForm(data=self.form_data(recipient=self.anna.pk))
+        self.assertFalse(form.is_valid())
+        self.assertIn("уже есть актуальный", str(form.non_field_errors()))
+
+    def test_cancelled_gift_does_not_block_date(self):
+        form = GiftForm(data=self.form_data(recipient=self.ivan.pk))
+        self.assertTrue(form.is_valid(), form.errors)
+
+
+class GiftCrudViewTests(BaseData):
+    def test_create_gift(self):
+        response = self.client.post(
+            reverse("gift_web:gift_create"),
+            {
+                "name": "Термокружка",
+                "recipient": self.olga.pk,
+                "price": "900",
+                "delivery_cost": "150",
+                "delivery_date": SOON.isoformat(),
+            },
+        )
+        gift = Gift.objects.get(name="Термокружка")
+        self.assertRedirects(response, gift.get_absolute_url())
+        self.assertEqual(gift.status, Gift.Status.PLANNED)
+
+    def test_invalid_post_shows_errors_and_saves_nothing(self):
+        response = self.client.post(
+            reverse("gift_web:gift_create"),
+            {"name": "", "recipient": self.olga.pk, "price": "abc"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors)
+        self.assertEqual(Gift.objects.count(), 3)
+
+    def test_edit_does_not_conflict_with_itself(self):
+        url = reverse("gift_web:gift_edit", args=[self.headphones.pk])
+        response = self.client.post(
+            url,
+            {
+                "name": "Наушники Pro",
+                "recipient": self.anna.pk,
+                "price": "4200",
+                "delivery_cost": "350",
+                "delivery_date": SOON.isoformat(),
+                "status": Gift.Status.ORDERED,
+            },
+        )
+        self.assertRedirects(response, self.headphones.get_absolute_url())
+        self.headphones.refresh_from_db()
+        self.assertEqual(self.headphones.name, "Наушники Pro")
+        self.assertEqual(Gift.objects.count(), 3)
+
+    def test_edit_conflict_with_other_gift(self):
+        url = reverse("gift_web:gift_edit", args=[self.book.pk])
+        response = self.client.post(
+            url,
+            {
+                "name": "Книга",
+                "recipient": self.anna.pk,
+                "price": "1500",
+                "delivery_cost": "200",
+                "delivery_date": SOON.isoformat(),
+                "status": Gift.Status.ORDERED,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "уже есть актуальный")
+
+    def test_cancel_requires_post(self):
+        url = reverse("gift_web:gift_cancel", args=[self.headphones.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+        self.headphones.refresh_from_db()
+        self.assertEqual(self.headphones.status, Gift.Status.PLANNED)
+
+    def test_cancel_changes_status(self):
+        url = reverse("gift_web:gift_cancel", args=[self.headphones.pk])
+        response = self.client.post(url)
+        self.assertRedirects(response, self.headphones.get_absolute_url())
+        self.headphones.refresh_from_db()
+        self.assertEqual(self.headphones.status, Gift.Status.CANCELLED)
+
+    def test_cancelled_gift_cannot_be_edited(self):
+        url = reverse("gift_web:gift_edit", args=[self.game.pk])
+        response = self.client.get(url)
+        self.assertRedirects(response, self.game.get_absolute_url())
+
+
+class ImageUploadTests(BaseData):
+    def setUp(self):
+        self.media_dir = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media_dir)
+        self.override.enable()
+
+    def tearDown(self):
+        self.override.disable()
+        shutil.rmtree(self.media_dir, ignore_errors=True)
+
+    def test_upload_image(self):
+        image = SimpleUploadedFile("photo.png", make_png(), "image/png")
+        url = reverse("gift_web:gift_edit", args=[self.book.pk])
+        self.client.post(
+            url,
+            {
+                "name": "Книга",
+                "recipient": self.anna.pk,
+                "price": "1500",
+                "delivery_cost": "200",
+                "delivery_date": LATER.isoformat(),
+                "status": Gift.Status.ORDERED,
+                "image": image,
+            },
+        )
+        self.book.refresh_from_db()
+        self.assertTrue(self.book.image.name.startswith("gifts/"))
+        response = self.client.get(self.book.get_absolute_url())
+        self.assertContains(response, self.book.image.url)
+
+    def test_not_an_image_rejected(self):
+        fake = SimpleUploadedFile("photo.png", b"not image", "image/png")
+        form = GiftForm(
+            data={
+                "name": "Термокружка",
+                "recipient": self.olga.pk,
+                "price": "900",
+                "delivery_cost": "150",
+                "delivery_date": SOON.isoformat(),
+            },
+            files={"image": fake},
+        )
+        self.assertIn("image", form.errors)

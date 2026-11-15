@@ -3,44 +3,20 @@
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Подарки</h1>
-    <a class="btn btn-outline-success" href="{% url 'gift_web:gift_search' %}">Подбор по бюджету</a>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-success" href="{% url 'gift_web:gift_search' %}">Подбор по бюджету</a>
+        <a class="btn btn-success" href="{% url 'gift_web:gift_create' %}">+ Добавить подарок</a>
+    </div>
 </div>
 <form method="get" class="card card-body mb-3 filter-form">
-    {% for error in errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors|join:" " }}</div>{% endif %}
     <div class="row g-2 align-items-end">
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label" for="q">Поиск</label>
-            <input type="search" id="q" name="q" value="{{ params.q }}" class="form-control" placeholder="Название или получатель">
-        </div>
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label" for="recipient">Получатель</label>
-            <select id="recipient" name="recipient" class="form-select">
-                <option value="">Все получатели</option>
-                {% for user in recipients %}<option value="{{ user.id }}"{% if params.recipient == user.id|stringformat:"d" %} selected{% endif %}>{{ user.name }}</option>{% endfor %}
-            </select>
-        </div>
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label" for="status">Статус</label>
-            <select id="status" name="status" class="form-select">
-                <option value="">Актуальные</option>
-                {% for value, label in status_choices %}<option value="{{ value }}"{% if params.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-                <option value="all"{% if params.status == "all" %} selected{% endif %}>Все, включая отменённые</option>
-            </select>
-        </div>
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label" for="sort">Сортировка</label>
-            <select id="sort" name="sort" class="form-select">
-                {% for value, label in sort_choices %}<option value="{{ value }}"{% if params.sort == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-            </select>
-        </div>
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label" for="date_from">Доставка с</label>
-            <input type="date" id="date_from" name="date_from" value="{{ params.date_from }}" class="form-control">
-        </div>
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label" for="date_to">по</label>
-            <input type="date" id="date_to" name="date_to" value="{{ params.date_to }}" class="form-control">
-        </div>
+        <div class="col-sm-6 col-lg-3">{% include "gift_web/includes/filter_field.html" with field=form.q %}</div>
+        <div class="col-sm-6 col-lg-3">{% include "gift_web/includes/filter_field.html" with field=form.recipient %}</div>
+        <div class="col-sm-6 col-lg-3">{% include "gift_web/includes/filter_field.html" with field=form.status %}</div>
+        <div class="col-sm-6 col-lg-3">{% include "gift_web/includes/filter_field.html" with field=form.sort %}</div>
+        <div class="col-sm-6 col-lg-3">{% include "gift_web/includes/filter_field.html" with field=form.date_from %}</div>
+        <div class="col-sm-6 col-lg-3">{% include "gift_web/includes/filter_field.html" with field=form.date_to %}</div>
         <div class="col-auto"><button type="submit" class="btn btn-primary">Применить</button></div>
         <div class="col-auto"><a class="btn btn-outline-secondary" href="{% url 'gift_web:gift_list' %}">Сбросить</a></div>
     </div>

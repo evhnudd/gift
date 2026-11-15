@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<form method="post" enctype="multipart/form-data" class="card card-body gift-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>
+    {% endif %}
+    <div class="row">
+        <div class="col-md-8">{% include "gift_web/includes/form_field.html" with field=form.name %}</div>
+        <div class="col-md-4">{% include "gift_web/includes/form_field.html" with field=form.recipient %}</div>
+        <div class="col-md-4">{% include "gift_web/includes/form_field.html" with field=form.price %}</div>
+        <div class="col-md-4">{% include "gift_web/includes/form_field.html" with field=form.delivery_cost %}</div>
+        <div class="col-md-4">{% include "gift_web/includes/form_field.html" with field=form.delivery_date %}</div>
+        {% if form.status %}<div class="col-md-4">{% include "gift_web/includes/form_field.html" with field=form.status %}</div>{% endif %}
+        <div class="col-md-8">{% include "gift_web/includes/form_field.html" with field=form.image %}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+        <a class="btn btn-outline-secondary" href="{% if gift %}{% url 'gift_web:gift_detail' gift.id %}{% else %}{% url 'gift_web:gift_list' %}{% endif %}">Отмена</a>
+    </div>
+</form>
+{% endblock %}

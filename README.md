@@ -380,7 +380,7 @@ flake8 . --extend-exclude=venv
 `pytest -v` — 18 passed; замечаний flake8 нет.
 
 
-# Django ORM и админ-панель (ПР9–ПР10)
+# Django ORM, админ-панель и формы (ПР9–ПР11)
 
 ## Быстрый запуск
 
@@ -414,7 +414,7 @@ flake8 . --extend-exclude=venv
 | `data/gifts.sqlite` | исходная база ПР7, только читается при переносе |
 | `db.sqlite3` | база Django (`DATABASES` в `settings.py`), с ней работает ORM |
 
-`db.sqlite3` — локальные данные, файл исключён из Git
+`db.sqlite3` и каталог `media/` — локальные данные, они исключены из Git
 (`.gitignore`). На новом компьютере база воссоздаётся командами `migrate` и
 `python db/import_sqlite_to_orm.py`.
 
@@ -430,7 +430,7 @@ flake8 . --extend-exclude=venv
 | Модель | Поля | Связи |
 |--------|------|-------|
 | `User` — пользователь/получатель | `name` CharField, `email` EmailField (unique), `slug` SlugField (unique) | — |
-| `Gift` — подарок | `name`, `price` и `delivery_cost` DecimalField, `delivery_date` DateField, `status` (TextChoices), `total_cost` GeneratedField | `recipient` → `User` (`on_delete=PROTECT`, `related_name="gifts"`) |
+| `Gift` — подарок | `name`, `price` и `delivery_cost` DecimalField, `delivery_date` DateField, `status` (TextChoices), `total_cost` GeneratedField, `image` ImageField | `recipient` → `User` (`on_delete=PROTECT`, `related_name="gifts"`) |
 | `Event` — событие | `title`, `event_date`, `description` (blank) | `user` → `User` (`CASCADE`, `related_name="events"`), `gift` → `Gift` (`SET_NULL`, `null=True`, `related_name="events"`) |
 
 Почему так настроены связи:
@@ -478,6 +478,7 @@ flake8 . --extend-exclude=venv
 | `0004_remove_gift_is_purchased` | удаление старого поля |
 | `0005_user_slug` | поле `slug`: добавление → заполнение → `unique` |
 | `0006_gift_total_cost` | `GeneratedField total_cost` |
+| `0007_gift_image` | `ImageField image` (ПР11) |
 
 Данные переводятся в новый формат **до** удаления старого поля, поэтому
 значения `is_purchased` не теряются.
@@ -489,16 +490,18 @@ flake8 . --extend-exclude=venv
 | `/` | счётчики и три ближайших события |
 | `/users/?q=` | пользователи, поиск по имени или e-mail |
 | `/recipients/`, `/recipients/<slug>/` | получатели с числом и суммой актуальных подарков; подарки получателя |
-| `/gifts/` | список подарков: фильтр (поиск, получатель, статус, период), сортировка, пагинация |
+| `/gifts/` | список подарков: форма фильтра (поиск, получатель, статус, период), сортировка, пагинация |
+| `/gifts/new/`, `/gifts/<id>/edit/` | создание и редактирование (ModelForm, загрузка фото) |
+| `/gifts/<id>/cancel/` | отмена подарка, **только POST** (GET → 405) |
 | `/gifts/search/?budget=` | актуальные подарки в пределах бюджета |
 | `/events/?date_from=&date_to=` | события за период |
 | `/events/need-gift/` | предстоящие события без подарка или с отменённым подарком |
 | `/statistics/` | сводка, статусы, группировка по получателям, порог числа подарков |
 | `/admin/` | административная панель |
 
-Несуществующий объект (`get_object_or_404`) → 404. Параметры `request.GET`
-проверяются в представлениях: неверная дата, сортировка или бюджет не
-вызывают ошибку — выводится сообщение, а неверный параметр не применяется.
+Несуществующий объект (`get_object_or_404`) → 404. Неверные параметры
+(дата, сортировка, бюджет) не вызывают ошибку: форма показывает сообщение,
+а список выводится без фильтра.
 
 ## ORM-запросы проекта (ПР9)
 
@@ -517,9 +520,10 @@ flake8 . --extend-exclude=venv
 | Аналог HAVING | `statistics` | `.filter(gifts_count__gte=min_gifts)` после `annotate` |
 | Ограничение | `statistics`, `index` | `[:3]` (LIMIT) |
 | Пагинация | `gift_list` | `Paginator(gifts, GIFTS_PER_PAGE)`, ссылки `{% querystring page=... %}` сохраняют фильтры |
+| Проверка конфликта | `GiftForm.clean()` | `active().filter(recipient=...).for_date(...).exclude(pk=...).exists()` |
 | Бюджет | `gift_search` | `active().within_budget(budget)` → `total_cost__lte` |
 
-Сортировка задаётся только ключами словаря `SORT_FIELDS` (`views.py`):
+Сортировка задаётся только ключами словаря `SORT_FIELDS` (`forms.py`):
 пользовательское значение не попадает в `order_by()` напрямую.
 
 **Поиск кириллицы в SQLite.** SQLite сравнивает без учёта регистра только
@@ -532,7 +536,7 @@ flake8 . --extend-exclude=venv
 * `User`: столбцы имя, e-mail, слаг, число подарков (`annotate`), поиск по
   имени и e-mail, слаг заполняется из имени (`prepopulated_fields`),
   inline-таблицы подарков и событий.
-* `Gift`: столбцы включая `total_cost`, `list_editable` для
+* `Gift`: столбцы включая `total_cost` и миниатюру фото, `list_editable` для
   статуса, фильтры по статусу, дате и получателю, `date_hierarchy`, поиск по
   названию и имени/e-mail получателя, `list_select_related`, действия
   «Отметить как заказанные» и «Отменить выбранные».
@@ -540,26 +544,55 @@ flake8 . --extend-exclude=venv
 * Русские названия приложения (`GiftWebConfig.verbose_name`), моделей и полей
   (`verbose_name`), `LANGUAGE_CODE = "ru-ru"`.
 
-Админ-панель сама по себе не проверяет бизнес-правила предметной области:
-фильтры только помогают найти записи.
+Админ-панель не проверяет бизнес-правила формы сайта (например, конфликт
+дат подарков) — эти проверки находятся в `GiftForm`.
 
 **Django Debug Toolbar** подключается только при `DEBUG=True` и не в тестах
 (`settings.py`), открывается кнопкой справа на страницах сайта; вкладка SQL
 показывает запросы страницы.
 
+## Формы (ПР11, `gift_web/forms.py`)
+
+| Форма | Тип | Назначение |
+|-------|-----|------------|
+| `GiftFilterForm` | `forms.Form`, GET | поиск, получатель, статус, период, сортировка списка подарков |
+| `BudgetForm` | `forms.Form`, GET | бюджет (`DecimalField`, `min_value=0`) |
+| `EventPeriodForm` | `forms.Form`, GET | период событий |
+| `GiftForm` | `ModelForm`, POST | создание подарка (без поля статуса) |
+| `GiftEditForm` | `ModelForm`, POST | редактирование (+ статус, кроме «Отменён») |
+
+Валидация:
+
+* валидатор-функция `validate_not_only_digits` — название не из одних цифр;
+* валидатор-класс `MaxFileSizeValidator(2)` — фото до 2 МБ;
+* стандартный `MinValueValidator` — стоимость ≥ 1, доставка ≥ 0;
+* `clean_delivery_date()` — дата доставки не в прошлом (при редактировании
+  можно оставить прежнюю дату);
+* `clean()` — доставка не дороже подарка; у получателя не может быть двух
+  **актуальных** подарков на одну дату (отменённые не мешают, редактируемый
+  подарок исключается через `exclude(pk=...)`);
+* `GiftFilterForm.clean()` / `EventPeriodForm.clean()` — начало периода не
+  позже конца.
+
+Все POST-формы содержат `{% csrf_token %}`; отмена — отдельная POST-форма
+(`@require_POST`). Фото сохраняются в `media/gifts/` (`MEDIA_ROOT`,
+`MEDIA_URL`), форма отправляется с `enctype="multipart/form-data"`,
+представление передаёт `request.FILES`. Нужен пакет Pillow.
+
 ## Структура проекта (актуальная)
 
 ```text
-gift_project/settings.py     настройки (БД, Debug Toolbar, контекст)
-gift_project/urls.py         корневые маршруты, /admin/, /__debug__/
+gift_project/settings.py     настройки (БД, медиа, Debug Toolbar, контекст)
+gift_project/urls.py         корневые маршруты, /admin/, /media/, /__debug__/
 gift_web/models.py           модели, GiftQuerySet, text_search_q
+gift_web/forms.py            формы и валидаторы
 gift_web/views.py            представления на ORM
 gift_web/admin.py            настройка админ-панели
 gift_web/context_processors.py
 gift_web/slugs.py            транслитерация для слагов
-gift_web/migrations/         миграции 0001–0006
-gift_web/templates/          шаблоны (base.html, includes/…)
-gift_web/tests.py            тесты Django (модели, ORM, страницы)
+gift_web/migrations/         миграции 0001–0007
+gift_web/templates/          шаблоны (base.html, gift_form.html, includes/…)
+gift_web/tests.py            тесты Django (модели, ORM, страницы, формы)
 db/inspect_source_db.py      просмотр исходной базы ПР7
 db/import_sqlite_to_orm.py   перенос данных ПР7 → ORM
 pytest.ini, .flake8          настройки проверок

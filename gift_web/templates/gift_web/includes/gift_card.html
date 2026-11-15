@@ -1,5 +1,8 @@
 <article class="card mb-3 gift-card">
     <div class="card-body d-flex gap-3">
+        {% if gift.image %}
+            <img class="gift-thumb" src="{{ MEDIA_URL }}{{ gift.image }}" alt="{{ gift.name }}">
+        {% endif %}
         <div class="flex-grow-1">
             <h2 class="card-title h5">{{ gift.name }} {% include "gift_web/includes/status_badge.html" with status=gift.status label=gift.status_label %}</h2>
             <p class="card-text mb-1">Получатель: <a href="{% url 'gift_web:recipient_detail' gift.recipient_slug %}">{{ gift.recipient_name }}</a></p>

@@ -49,6 +49,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "django.template.context_processors.media",
                 "gift_web.context_processors.site_context",
             ],
         },
@@ -68,6 +69,11 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "gift_web" / "static"]
+
+# Загруженные пользователями файлы (фото подарков) хранятся отдельно
+# от статических файлов приложения.
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 # Количество подарков на одной странице списка.
 GIFTS_PER_PAGE = 3

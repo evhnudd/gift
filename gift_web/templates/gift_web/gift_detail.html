@@ -2,6 +2,9 @@
 {% block title %}{{ gift.name }} — Подарок{% endblock %}
 {% block content %}
 <div class="row g-4">
+    {% if gift.image %}
+    <div class="col-md-4"><img class="img-fluid rounded gift-photo" src="{{ gift.image.url }}" alt="{{ gift.name }}"></div>
+    {% endif %}
     <div class="col">
         <h1>{{ gift.name }} {% include "gift_web/includes/status_badge.html" with status=gift.status label=gift.get_status_display %}</h1>
         <dl class="row">
@@ -13,6 +16,13 @@
             <dt class="col-sm-4">События</dt><dd class="col-sm-8">{% for event in events %}<a href="{% url 'gift_web:event_detail' event.id %}">{{ event.title }}</a>{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</dd>
         </dl>
         <div class="d-flex flex-wrap gap-2">
+            {% if gift.is_active %}
+                <a href="{% url 'gift_web:gift_edit' gift.id %}" class="btn btn-primary">Редактировать</a>
+                <form method="post" action="{% url 'gift_web:gift_cancel' gift.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger">Отменить подарок</button>
+                </form>
+            {% endif %}
             <a href="{% url 'gift_web:gift_list' %}" class="btn btn-outline-secondary">К списку подарков</a>
         </div>
     </div>

@@ -2,6 +2,7 @@
 
 from django.contrib import admin
 from django.db.models import Count
+from django.utils.html import format_html
 
 from gift_web.models import Event, Gift, User
 
@@ -53,6 +54,7 @@ class GiftAdmin(admin.ModelAdmin):
         "total_cost",
         "delivery_date",
         "status",
+        "image_preview",
     )
     list_display_links = ("name",)
     list_editable = ("status",)
@@ -63,7 +65,7 @@ class GiftAdmin(admin.ModelAdmin):
     list_per_page = 20
     list_select_related = ("recipient",)
     autocomplete_fields = ("recipient",)
-    readonly_fields = ("total_cost",)
+    readonly_fields = ("total_cost", "image_preview")
     fieldsets = (
         (None, {"fields": ("name", "recipient", "status")}),
         (
@@ -77,8 +79,17 @@ class GiftAdmin(admin.ModelAdmin):
                 )
             },
         ),
+        ("Фото", {"fields": ("image", "image_preview")}),
     )
     actions = ("mark_ordered", "mark_cancelled")
+
+    @admin.display(description="фото")
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html(
+                '<img src="{}" style="max-height: 60px">', obj.image.url
+            )
+        return "—"
 
     @admin.action(description="Отметить как заказанные")
     def mark_ordered(self, request, queryset):

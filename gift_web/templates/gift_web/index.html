@@ -7,6 +7,7 @@
     <h1>{{ site_name }}</h1>
     <p class="lead">Пользователи, получатели, подарки и события в одном веб-интерфейсе.</p>
     <a class="btn btn-primary" href="{% url 'gift_web:gift_list' %}">Открыть подарки</a>
+    <a class="btn btn-outline-primary" href="{% url 'gift_web:gift_create' %}">Добавить подарок</a>
 </div>
 <div class="row g-3 mb-4">
     <div class="col-md-4"><div class="card stat-card"><div class="card-body"><h2>{{ users_count }}</h2><p>пользователей</p><a href="{% url 'gift_web:user_list' %}">Перейти</a></div></div></div>

@@ -2,12 +2,13 @@
 
 С ПР9 данные получаются через Django ORM (модели gift_web/models.py),
 SQL-запросы через sqlite3 в представлениях больше не используются.
+ПР11: пользовательский ввод проходит через формы Django (forms.py).
 """
 
 from datetime import date
-from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import (
     Avg,
@@ -23,29 +24,20 @@ from django.db.models import (
     When,
 )
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, render
-from gift_web.models import Event, Gift, User, text_search_q
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
-# Разрешённые значения параметра sort -> поля для order_by().
-# Пользовательское значение никогда не передаётся в order_by() напрямую.
-SORT_FIELDS = {
-    "date": ("delivery_date", "name"),
-    "-date": ("-delivery_date", "name"),
-    "cost": ("total_cost", "name"),
-    "-cost": ("-total_cost", "name"),
-    "name": ("name",),
-    "recipient": ("recipient__name", "delivery_date"),
-}
-SORT_CHOICES = [
-    ("date", "Дата доставки ↑"),
-    ("-date", "Дата доставки ↓"),
-    ("cost", "Стоимость ↑"),
-    ("-cost", "Стоимость ↓"),
-    ("name", "Название"),
-    ("recipient", "Получатель"),
-]
-DEFAULT_SORT = "date"
-STATUS_ALL = "all"
+from gift_web.forms import (
+    DEFAULT_SORT,
+    SORT_FIELDS,
+    STATUS_ALL,
+    BudgetForm,
+    EventPeriodForm,
+    GiftEditForm,
+    GiftFilterForm,
+    GiftForm,
+)
+from gift_web.models import Event, Gift, User, text_search_q
 
 # Условие «подарок не отменён» для агрегатов по связанным подаркам.
 ACTIVE_GIFTS = ~Q(gifts__status=Gift.Status.CANCELLED)
@@ -58,17 +50,6 @@ STATUS_LABEL = Case(
     ],
     output_field=CharField(),
 )
-
-
-def parse_date(value: str, errors: list[str], label: str):
-    """Строка YYYY-MM-DD -> date; при ошибке добавляет сообщение."""
-    if not value:
-        return None
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        errors.append(f"{label}: неверная дата «{value}».")
-        return None
 
 
 def gifts_for_cards():
@@ -145,41 +126,31 @@ def recipient_detail(request: HttpRequest, slug: str) -> HttpResponse:
 
 
 def gift_list(request: HttpRequest) -> HttpResponse:
-    """Список подарков: фильтрация + поиск + сортировка + пагинация.
-
-    Параметры берутся из request.GET и проверяются вручную.
-    """
-    errors: list[str] = []
-    query = request.GET.get("q", "").strip()
-    status = request.GET.get("status", "")
-    recipient_id = request.GET.get("recipient", "")
-    date_from = parse_date(request.GET.get("date_from", ""), errors, "С")
-    date_to = parse_date(request.GET.get("date_to", ""), errors, "По")
-    sort = request.GET.get("sort", DEFAULT_SORT)
-    if sort not in SORT_FIELDS:
-        if sort:
-            errors.append("Неизвестный вариант сортировки.")
-        sort = DEFAULT_SORT
-    if date_from and date_to and date_from > date_to:
-        errors.append("Начальная дата периода не может быть позже конечной.")
-        date_from = date_to = None
-
+    """Список подарков: фильтрация + поиск + сортировка + пагинация."""
+    form = GiftFilterForm(request.GET or None)
     gifts = Gift.objects.all()
-    if status == STATUS_ALL:
-        pass
-    elif status in Gift.Status.values:
-        gifts = gifts.filter(status=status)
+    sort = DEFAULT_SORT
+
+    if form.is_bound and form.is_valid():
+        data = form.cleaned_data
+        if data["status"] == STATUS_ALL:
+            pass
+        elif data["status"]:
+            gifts = gifts.filter(status=data["status"])
+        else:
+            gifts = gifts.active()
+        if data["q"]:
+            gifts = gifts.search(data["q"])
+        if data["recipient"]:
+            gifts = gifts.filter(recipient=data["recipient"])
+        if data["date_from"]:
+            gifts = gifts.filter(delivery_date__gte=data["date_from"])
+        if data["date_to"]:
+            gifts = gifts.filter(delivery_date__lte=data["date_to"])
+        sort = data["sort"] or DEFAULT_SORT
     else:
-        status = ""
+        # Без параметров или при ошибке в форме - актуальные подарки.
         gifts = gifts.active()
-    if query:
-        gifts = gifts.search(query)
-    if recipient_id.isdigit():
-        gifts = gifts.filter(recipient_id=int(recipient_id))
-    if date_from:
-        gifts = gifts.filter(delivery_date__gte=date_from)
-    if date_to:
-        gifts = gifts.filter(delivery_date__lte=date_to)
 
     # values() + annotate(F()) - только нужные поля, данные получателя
     # берутся тем же SQL-запросом через JOIN.
@@ -199,6 +170,7 @@ def gift_list(request: HttpRequest) -> HttpResponse:
             "delivery_date",
             "status",
             "status_label",
+            "image",
         )
     )
 
@@ -207,22 +179,7 @@ def gift_list(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "gift_web/gift_list.html",
-        {
-            "page_obj": page_obj,
-            "gifts": page_obj.object_list,
-            "errors": errors,
-            "recipients": User.objects.order_by("name"),
-            "status_choices": Gift.Status.choices,
-            "sort_choices": SORT_CHOICES,
-            "params": {
-                "q": query,
-                "status": status,
-                "recipient": recipient_id,
-                "date_from": request.GET.get("date_from", ""),
-                "date_to": request.GET.get("date_to", ""),
-                "sort": sort,
-            },
-        },
+        {"form": form, "page_obj": page_obj, "gifts": page_obj.object_list},
     )
 
 
@@ -238,58 +195,96 @@ def gift_detail(request: HttpRequest, gift_id: int) -> HttpResponse:
     )
 
 
+def gift_create(request: HttpRequest) -> HttpResponse:
+    if request.method == "POST":
+        form = GiftForm(request.POST, request.FILES)
+        if form.is_valid():
+            gift = form.save()
+            messages.success(request, f"Подарок «{gift}» добавлен.")
+            return redirect(gift)
+    else:
+        initial = {}
+        recipient_id = request.GET.get("recipient")
+        if recipient_id and recipient_id.isdigit():
+            initial["recipient"] = recipient_id
+        form = GiftForm(initial=initial)
+    return render(
+        request,
+        "gift_web/gift_form.html",
+        {"form": form, "title": "Новый подарок"},
+    )
+
+
+def gift_edit(request: HttpRequest, gift_id: int) -> HttpResponse:
+    gift = get_object_or_404(Gift, pk=gift_id)
+    if gift.status == Gift.Status.CANCELLED:
+        messages.warning(
+            request, "Отменённый подарок нельзя редактировать."
+        )
+        return redirect(gift)
+    if request.method == "POST":
+        # instance=gift: форма изменяет существующую запись,
+        # а не создаёт новую.
+        form = GiftEditForm(request.POST, request.FILES, instance=gift)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Изменения сохранены.")
+            return redirect(gift)
+    else:
+        form = GiftEditForm(instance=gift)
+    return render(
+        request,
+        "gift_web/gift_form.html",
+        {"form": form, "gift": gift, "title": f"Редактирование: {gift}"},
+    )
+
+
+@require_POST
+def gift_cancel(request: HttpRequest, gift_id: int) -> HttpResponse:
+    """Отмена подарка. Только POST: GET-запрос вернёт 405."""
+    gift = get_object_or_404(Gift, pk=gift_id)
+    if gift.status == Gift.Status.CANCELLED:
+        messages.info(request, "Подарок уже отменён.")
+    else:
+        gift.cancel()
+        messages.success(request, f"Подарок «{gift}» отменён.")
+    return redirect(gift)
+
+
 def gift_search(request: HttpRequest) -> HttpResponse:
     """Подбор актуальных подарков, укладывающихся в бюджет."""
-    raw_budget = request.GET.get("budget", "").strip()
-    error = ""
+    form = BudgetForm(request.GET or None)
     gifts = None
-    budget = None
-    if raw_budget:
-        try:
-            budget = Decimal(raw_budget.replace(",", "."))
-        except InvalidOperation:
-            error = "Бюджет должен быть числом."
-        else:
-            if budget < 0:
-                error = "Бюджет не может быть отрицательным."
-                budget = None
-    if budget is not None:
+    if form.is_bound and form.is_valid():
         gifts = (
             gifts_for_cards()
             .active()
-            .within_budget(budget)
+            .within_budget(form.cleaned_data["budget"])
             .order_by("total_cost")
         )
     return render(
         request,
         "gift_web/gift_search.html",
-        {
-            "gifts": gifts,
-            "budget": budget,
-            "raw_budget": raw_budget,
-            "error": error,
-        },
+        {"form": form, "gifts": gifts},
     )
 
 
 def event_list(request: HttpRequest) -> HttpResponse:
-    errors: list[str] = []
-    date_from = parse_date(request.GET.get("date_from", ""), errors, "С")
-    date_to = parse_date(request.GET.get("date_to", ""), errors, "По")
+    form = EventPeriodForm(request.GET or None)
     events = Event.objects.select_related("user", "gift")
-    if date_from:
-        events = events.filter(event_date__gte=date_from)
-    if date_to:
-        events = events.filter(event_date__lte=date_to)
+    if form.is_bound and form.is_valid():
+        if form.cleaned_data["date_from"]:
+            events = events.filter(
+                event_date__gte=form.cleaned_data["date_from"]
+            )
+        if form.cleaned_data["date_to"]:
+            events = events.filter(
+                event_date__lte=form.cleaned_data["date_to"]
+            )
     return render(
         request,
         "gift_web/event_list.html",
-        {
-            "events": events.order_by("event_date"),
-            "errors": errors,
-            "date_from": request.GET.get("date_from", ""),
-            "date_to": request.GET.get("date_to", ""),
-        },
+        {"form": form, "events": events.order_by("event_date")},
     )
 
 
